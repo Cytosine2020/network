@@ -1,76 +1,51 @@
-#include <iostream>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <linux/if_ether.h>
-#include <linux/ip.h>
-#include <arpa/inet.h>
-#include <netinet/udp.h>
+#include <cstdio>
+
+#include "wire.hpp"
+#include "utility.hpp"
+
+using namespace cs120;
+
+constexpr size_t BUFFER_SIZE = 65536;
 
 
 int main() {
-    int sock_r = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_ALL));
-    if (sock_r < 0) {
-        printf("error in socket\n");
-        return -1;
-    }
+#if defined(__linux__)
+    int raw_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
+#elif defined(__APPLE__)
+    int raw_socket = socket(AF_NDRV, SOCK_RAW, 0);
+#endif
+    if (raw_socket < 0) { cs120_abort("error in socket"); }
 
-    auto *buffer = new uint8_t[65536]{};
+    auto buffer = Array<uint8_t>{BUFFER_SIZE};
 
-    struct sockaddr saddr{};
+    for (;;) {
+        ssize_t buffer_len = recv(raw_socket, buffer.begin(), BUFFER_SIZE, 0);
 
-    int saddr_len = sizeof(saddr);
+        if (buffer_len < 0) { cs120_abort("error in reading recvfrom function"); }
 
-    ssize_t buflen = recvfrom(sock_r, buffer, 65536, 0, &saddr, (socklen_t *) &saddr_len);
+        auto eth_datagram = buffer[Range{0, static_cast<size_t>(buffer_len)}];
 
-    if (buflen < 0) {
-        printf("error in reading recvfrom function\n");
-        return -1;
-    }
+        auto *eth = (struct ethhdr *) eth_datagram.begin();
+        format(*eth);
 
-    auto *eth = (struct ethhdr *) (buffer);
-    printf("\nEthernet Header\n");
-    printf("\t|-Source Address : %.2X-%.2X-%.2X-%.2X-%.2X-%.2X\n", eth->h_source[0],
-           eth->h_source[1], eth->h_source[2], eth->h_source[3], eth->h_source[4],
-           eth->h_source[5]);
-    printf("\t|-Destination Address : %.2X-%.2X-%.2X-%.2X-%.2X-%.2X\n", eth->h_dest[0],
-           eth->h_dest[1], eth->h_dest[2], eth->h_dest[3], eth->h_dest[4], eth->h_dest[5]);
-    printf("\t|-Protocol : %d\n", eth->h_proto);
+        if (eth->h_proto != 8) { continue; }
 
-    unsigned short iphdrlen;
-    auto *ip = (struct iphdr *) (buffer + sizeof(struct ethhdr));
-    iphdrlen = ip->ihl*4;
+        auto eth_data = eth_datagram[Range{sizeof(struct ethhdr), eth_datagram.size()}];
+        auto *ip = (struct iphdr *) eth_data.begin();
 
-    struct sockaddr_in source{};
-    source.sin_addr.s_addr = ip->saddr;
+        if (ip->iphdr_version != 4u) { continue; }
 
-    struct sockaddr_in dest{};
-    dest.sin_addr.s_addr = ip->daddr;
+        format(*ip);
 
-    printf("\t|-Version : %d\n", (unsigned int) ip->version);
-    printf("\t|-Internet Header Length : %d DWORDS or %d Bytes\n", (unsigned int) ip->ihl,
-           ((unsigned int) (ip->ihl)) * 4);
-    printf("\t|-Type Of Service : %d\n", (unsigned int) ip->tos);
-    printf("\t|-Total Length : %d Bytes\n", ntohs(ip->tot_len));
-    printf("\t|-Identification : %d\n", ntohs(ip->id));
-    printf("\t|-Time To Live : %d\n", (unsigned int) ip->ttl);
-    printf("\t|-Protocol : %d\n", (unsigned int) ip->protocol);
-    printf("\t|-Header Checksum : %d\n", ntohs(ip->check));
-    printf("\t|-Source IP : %s\n", inet_ntoa(source.sin_addr));
-    printf("\t|-Destination IP : %s\n", inet_ntoa(dest.sin_addr));
+        if (ip->iphdr_protocol != 17) { continue; }
 
-    auto *udp = (struct udphdr *) (buffer + iphdrlen + sizeof(struct ethhdr));
+        auto ip_data = eth_data[Range{static_cast<size_t>(ip->iphdr_ihl) * 4, eth_data.size()}];
+        auto *udp = (struct udphdr *) ip_data.begin();
 
-    printf("\t|-Source Port : %d\n", ntohs(udp->source));
-    printf("\t|-Destination Port : %d\n", ntohs(udp->dest));
-    printf("\t|-UDP Length : %d\n", ntohs(udp->len));
-    printf("\t|-UDP Checksum : %d\n", ntohs(udp->check));
+        format(*udp);
 
-    unsigned char *data = (buffer + iphdrlen + sizeof(struct ethhdr) + sizeof(struct udphdr));
+        auto udp_data = ip_data[Range{sizeof(struct udphdr), ip_data.size()}];
 
-    size_t remaining_data = buflen - (iphdrlen + sizeof(struct ethhdr) + sizeof(struct udphdr));
-
-    for (size_t i = 0; i < remaining_data; i++) {
-        if (i != 0 && i % 16 == 0) printf("\n");
-        printf("%.2X ", data[i]);
+        format(udp_data);
     }
 }

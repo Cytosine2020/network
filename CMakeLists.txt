@@ -1,10 +1,22 @@
 cmake_minimum_required(VERSION 3.0)
 project(CS120)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 20)
 
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -fno-exceptions -fno-rtti")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -flto")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -ggdb -g3 -fno-omit-frame-pointer -D __DEBUG__")
 
-add_executable(nat-server src/main.cpp)
+include_directories(include)
+
+add_executable(nat-server src/main.cpp src/wire.cpp)
+
+if (UNIX AND NOT APPLE)
+    add_custom_command(
+            TARGET nat-server
+            POST_BUILD
+            COMMAND chmod 700 nat-server && sudo setcap cap_net_admin,cap_net_raw=eip nat-server
+            COMMENT "Grant access for raw socket"
+            VERBATIM
+    )
+endif ()
