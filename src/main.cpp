@@ -1,5 +1,7 @@
 #include <cstdio>
 
+#include "pcap/pcap.h"
+
 #include "wire.hpp"
 #include "utility.hpp"
 
@@ -8,56 +10,56 @@ using namespace cs120;
 constexpr size_t BUFFER_SIZE = 65536;
 
 
+void pcap_callback(u_char *arg, const struct pcap_pkthdr *pkthdr, const u_char *packet) {
+    (void) arg;
+
+    Slice<uint8_t> eth_datagram{static_cast<const uint8_t *>(packet), pkthdr->caplen};
+
+    auto *eth = (struct ethhdr *) eth_datagram.begin();
+
+    if (eth->h_proto != 8) { return; }
+
+    auto eth_data = eth_datagram[Range{sizeof(struct ethhdr), eth_datagram.size()}];
+
+    auto *ip = (struct iphdr *) eth_data.begin();
+
+    if (ip->iphdr_version != 4u) { return; }
+
+    format(*ip);
+
+    if (ip->iphdr_protocol != 17) { return; }
+
+    auto ip_data = eth_data[Range{static_cast<size_t>(ip->iphdr_ihl) * 4, eth_data.size()}];
+    auto *udp = (struct udphdr *) ip_data.begin();
+
+    format(*udp);
+
+    auto udp_data = ip_data[Range{sizeof(struct udphdr), ip_data.size()}];
+
+    format(udp_data);
+}
+
+
 int main() {
-#if defined(__linux__)
-    int raw_socket = socket(AF_PACKET, SOCK_RAW, htons(ETH_P_IP));
-#elif defined(__APPLE__)
-    int raw_socket = socket(PF_INET, SOCK_RAW, IPPROTO_IP);
-    if (raw_socket < 0) { cs120_abort("error in socket"); }
+    char pcap_error[PCAP_ERRBUF_SIZE]{};
+    pcap_if_t *device = nullptr;
 
-    {
-        int yes = 1;
-        if (setsockopt(raw_socket, IPPROTO_IP, IP_HDRINCL, &yes, sizeof(yes)) < 0) {
-            cs120_abort("error in setsockopt");
-        }
+    if (pcap_findalldevs(&device, pcap_error) == PCAP_ERROR) { cs120_abort(pcap_error); }
+
+    pcap_t *handle = pcap_open_live(device->name, BUFFER_SIZE, 0, 1, pcap_error);
+    if (handle == nullptr) { cs120_abort(pcap_error); }
+
+    pcap_freealldevs(device);
+
+    struct bpf_program filter{};
+
+    if (pcap_compile(handle, &filter, "", 0, PCAP_NETMASK_UNKNOWN) == PCAP_ERROR) {
+        cs120_abort(pcap_geterr(handle));
     }
-#endif
 
-    auto buffer = Array<uint8_t>{BUFFER_SIZE};
-
-    for (;;) {
-        ssize_t buffer_len = recv(raw_socket, buffer.begin(), BUFFER_SIZE, 0);
-        if (buffer_len < 0) { cs120_abort("error in recv"); }
-
-#if defined(__linux__)
-        auto eth_data = ({
-            auto eth_datagram = buffer[Range{0, static_cast<size_t>(buffer_len)}];
-
-            auto *eth = (struct ethhdr *) eth_datagram.begin();
-
-            if (eth->h_proto != 8) { continue; }
-
-            eth_datagram[Range{sizeof(struct ethhdr), eth_datagram.size()}];
-        });
-#elif defined(__APPLE__)
-        auto eth_data = buffer[Range{0, static_cast<size_t>(buffer_len)}];
-#endif
-
-        auto *ip = (struct iphdr *) eth_data.begin();
-
-//        if (ip->iphdr_version != 4u) { continue; }
-
-        format(*ip);
-
-        if (ip->iphdr_protocol != 17) { continue; }
-
-        auto ip_data = eth_data[Range{static_cast<size_t>(ip->iphdr_ihl) * 4, eth_data.size()}];
-        auto *udp = (struct udphdr *) ip_data.begin();
-
-        format(*udp);
-
-        auto udp_data = ip_data[Range{sizeof(struct udphdr), ip_data.size()}];
-
-        format(udp_data);
+    if (pcap_loop(handle, 10, pcap_callback, nullptr) == PCAP_ERROR) {
+        cs120_abort(pcap_geterr(handle));
     }
+
+    pcap_close(handle);
 }

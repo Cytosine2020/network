@@ -12,9 +12,10 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -ggdb -g3 -fno-omit-frame-po
 find_package(PCAP REQUIRED)
 find_package(LIBNET REQUIRED)
 
-include_directories(include)
+include_directories(${PCAP_INCLUDE_DIR} ${LIBNET_INCLUDE_DIR} include)
 
 add_executable(nat-server src/main.cpp src/wire.cpp)
+target_link_libraries(nat-server ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
 if (UNIX AND NOT APPLE)
     add_custom_command(
