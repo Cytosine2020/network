@@ -134,7 +134,7 @@ public:
         return *this;
     }
 
-    Array copy() const {
+    Array clone() const {
         Array other{this->size_};
 
         for (size_t i = 0; i < this->size_; ++i) {
@@ -144,7 +144,7 @@ public:
         return other;
     }
 
-    Array shallow_copy() const {
+    Array shallow_clone() const {
         Array other{};
         other.inner = new T[size_];
         other.size_ = size_;
@@ -206,7 +206,7 @@ private:
 public:
     MutSlice(T *inner, size_t size_) : inner{inner}, size_{size_} {}
 
-    Array<T> copy() const {
+    Array<T> clone() const {
         Array<T> other{this->size_};
 
         for (size_t i = 0; i < this->size_; ++i) {
@@ -216,7 +216,7 @@ public:
         return other;
     }
 
-    Array<T> shallow_copy() const {
+    Array<T> shallow_clone() const {
         Array<T> other{};
         other.inner = new T[size_];
         other.size_ = size_;
@@ -280,7 +280,7 @@ public:
 
     Slice(const T *inner, size_t size_) : inner{inner}, size_{size_} {}
 
-    Array<T> copy() const {
+    Array<T> clone() const {
         Array<T> other{this->size_};
 
         for (size_t i = 0; i < this->size_; ++i) {
@@ -290,7 +290,7 @@ public:
         return other;
     }
 
-    Array<T> shallow_copy() const {
+    Array<T> shallow_clone() const {
         Array <T> other{};
         other.inner = new T[size_];
         other.size_ = size_;
