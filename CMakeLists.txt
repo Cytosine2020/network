@@ -14,8 +14,8 @@ find_package(LIBNET REQUIRED)
 
 include_directories(${PCAP_INCLUDE_DIR} ${LIBNET_INCLUDE_DIR} include)
 
-add_executable(nat-server src/main.cpp src/wire.cpp)
-target_link_libraries(nat-server ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
+add_executable(nat-server src/main.cpp src/wire.cpp src/device/raw_socket.cpp)
+target_link_libraries(nat-server pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
 if (APPLE)
     add_custom_command(

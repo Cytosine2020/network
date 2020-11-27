@@ -62,7 +62,7 @@ void format(const Slice<uint8_t> &object) {
     size_t i = 0;
 
     for (auto &item: object) {
-        if (i % 16 == 0) { printf(&"\n%.4X: "[i == 0], static_cast<uint32_t>(i / 2)); }
+        if (i % 32 == 0) { printf(&"\n%.4X: "[i == 0], static_cast<uint32_t>(i)); }
         printf("%.2X ", item);
         ++i;
     }

@@ -99,6 +99,12 @@ T divide_ceil(T a, T b) {
 struct Range {
     size_t start;
     size_t end;
+
+    Range() : start{0}, end{0} {}
+
+    explicit Range(size_t start) : start{start}, end{0} {}
+
+    Range(size_t start, size_t end) : start{start}, end{end} {}
 };
 
 
@@ -167,6 +173,8 @@ public:
     }
 
     MutSlice<T> operator[](Range range) {
+        if (range.end == 0) { range.end = size(); }
+
         if (range.start > range.end || range.end > size_) {
             cs120_abort("index out of boundary!");
         }
@@ -175,6 +183,8 @@ public:
     }
 
     Slice<T> operator[](Range range) const {
+        if (range.end == 0) { range.end = size(); }
+
         if (range.start > range.end || range.end > size_) {
             cs120_abort("index out of boundary!");
         }
@@ -239,6 +249,8 @@ public:
     }
 
     MutSlice<T> operator[](Range range) {
+        if (range.end == 0) { range.end = size(); }
+
         if (range.start > range.end || range.end > size_) {
             cs120_abort("index out of boundary!");
         }
@@ -247,6 +259,8 @@ public:
     }
 
     Slice<T> operator[](Range range) const {
+        if (range.end == 0) { range.end = size(); }
+
         if (range.start > range.end || range.end > size_) {
             cs120_abort("index out of boundary!");
         }
@@ -307,6 +321,8 @@ public:
     }
 
     Slice<T> operator[](Range range) const {
+        if (range.end == 0) { range.end = size(); }
+
         if (range.start > range.end || range.end > size_) {
             cs120_abort("index out of boundary!");
         }
