@@ -4,10 +4,10 @@
 
 - install `libcap` and `libnet` for ip package sniffing and injecting.
 
-  - linux
+  - ubuntu or debian
   
     ```bash
-    $ sudo apt install libcap-dev
+    $ sudo apt install libpcap-dev
     $ sudo apt install libnet1-dev
     ```
 
