@@ -8,6 +8,11 @@
 namespace {
 using namespace cs120;
 
+struct pcap_callback_args {
+    pcap_t *pcap_handle;
+    struct bpf_program filter;
+};
+
 void pcap_callback(u_char *arg, const struct pcap_pkthdr *info, const u_char *packet) {
     (void) arg;
 
@@ -39,16 +44,14 @@ void pcap_callback(u_char *arg, const struct pcap_pkthdr *info, const u_char *pa
     format(udp_data);
 }
 
-void *raw_socket_receiver(void *args) {
-    auto *pcap_handle = reinterpret_cast<pcap_t *>(args);
+void *raw_socket_receiver(void *args_) {
+    auto *args = reinterpret_cast<pcap_callback_args *>(args_);
 
     auto count = std::numeric_limits<int32_t>::max();
 
     for (;;) {
-        if (pcap_loop(pcap_handle, count, pcap_callback, nullptr) == PCAP_ERROR) {
-            pcap_close(pcap_handle);
-
-            cs120_abort(pcap_geterr(pcap_handle));
+        if (pcap_loop(args->pcap_handle, count, pcap_callback, nullptr) == PCAP_ERROR) {
+            cs120_abort(pcap_geterr(args->pcap_handle));
         }
     }
 }
@@ -67,12 +70,15 @@ RawSocket::RawSocket() {
 
     pcap_freealldevs(device);
 
-    struct bpf_program filter{};
+    auto *args = new pcap_callback_args{
+        .pcap_handle = pcap_handle,
+        .filter = (struct bpf_program){},
+    };
 
-    if (pcap_compile(pcap_handle, &filter, "", 0, PCAP_NETMASK_UNKNOWN) == PCAP_ERROR) {
+    if (pcap_compile(pcap_handle, &args->filter, "", 0, PCAP_NETMASK_UNKNOWN) == PCAP_ERROR) {
         cs120_abort(pcap_geterr(pcap_handle));
     }
 
-    pthread_create(&receiver, nullptr, raw_socket_receiver, pcap_handle);
+    pthread_create(&receiver, nullptr, raw_socket_receiver, args);
 }
 }
