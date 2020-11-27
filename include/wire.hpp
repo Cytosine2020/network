@@ -53,7 +53,6 @@ struct ethhdr {
 #endif
 
 namespace cs120 {
-
 /// RFC 1071
 /// Calculates the Internet-checksum
 /// Valid for the IP, ICMP, TCP or UDP header

@@ -1,7 +1,10 @@
 #ifndef CS120_RAW_SOCKET_HPP
 #define CS120_RAW_SOCKET_HPP
 
-
+#include <queue>
+#include <mutex>
+#include <vector>
+#include <condition_variable>
 #include "pthread.h"
 
 #include "pcap/pcap.h"
@@ -11,11 +14,14 @@
 
 
 namespace cs120 {
+static constexpr size_t SOCKET_BUFFER_SIZE = 2048;
+
 class RawSocket {
 private:
-    static constexpr size_t PCAP_BUFFER_SIZE = 4096;
-
     pthread_t receiver;
+    std::mutex *lock;
+    std::condition_variable *variable;
+    std::queue<std::vector<uint8_t>> *receive_queue;
 
 public:
     RawSocket();
@@ -23,6 +29,8 @@ public:
     RawSocket(RawSocket &&other) noexcept = default;
 
     RawSocket &operator=(RawSocket &&other) noexcept = default;
+
+    std::vector<uint8_t> recv();
 
     ~RawSocket() = default;
 };
