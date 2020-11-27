@@ -1,5 +1,3 @@
-#include <cstdio>
-
 #include "pcap/pcap.h"
 
 #include "wire.hpp"
@@ -7,13 +5,15 @@
 
 using namespace cs120;
 
-constexpr size_t BUFFER_SIZE = 65536;
+constexpr size_t BUFFER_SIZE = 4096;
 
 
-void pcap_callback(u_char *arg, const struct pcap_pkthdr *pkthdr, const u_char *packet) {
+void pcap_callback(u_char *arg, const struct pcap_pkthdr *info, const u_char *packet) {
     (void) arg;
 
-    Slice<uint8_t> eth_datagram{static_cast<const uint8_t *>(packet), pkthdr->caplen};
+    if (info->caplen != info->len) { cs120_warn("packet truncated!"); }
+
+    Slice<uint8_t> eth_datagram{static_cast<const uint8_t *>(packet), info->caplen};
 
     auto *eth = (struct ethhdr *) eth_datagram.begin();
 

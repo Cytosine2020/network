@@ -29,8 +29,7 @@
 #elif defined(__APPLE__)
 #define ETH_ALEN 6
 
-struct ethhdr
-{
+struct ethhdr {
     unsigned char h_dest[ETH_ALEN];
     unsigned char h_source[ETH_ALEN];
     unsigned short h_proto;
@@ -54,6 +53,17 @@ struct ethhdr
 #endif
 
 namespace cs120 {
+
+/// RFC 1071
+/// Calculates the Internet-checksum
+/// Valid for the IP, ICMP, TCP or UDP header
+///
+/// *addr : Pointer to the Beginning of the data (checksum field must be 0)
+/// len : length of the data (in bytes)
+/// return : checksum in network byte order
+
+uint16_t composite_checksum(const uint16_t *addr, size_t len);
+
 void format(const struct ethhdr &object);
 
 void format(const struct iphdr &object);

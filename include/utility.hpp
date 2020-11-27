@@ -324,7 +324,6 @@ public:
 
     ~Slice() = default;
 };
-
 }
 
 

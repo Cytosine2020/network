@@ -17,7 +17,14 @@ include_directories(${PCAP_INCLUDE_DIR} ${LIBNET_INCLUDE_DIR} include)
 add_executable(nat-server src/main.cpp src/wire.cpp)
 target_link_libraries(nat-server ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
-if (UNIX AND NOT APPLE)
+if (APPLE)
+    add_custom_command(
+            TARGET nat-server
+            POST_BUILD
+            COMMAND chmod 700 nat-server
+            VERBATIM
+    )
+elseif (UNIX)
     add_custom_command(
             TARGET nat-server
             POST_BUILD
