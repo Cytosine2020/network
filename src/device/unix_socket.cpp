@@ -60,6 +60,8 @@ UnixSocket::UnixSocket(size_t buffer_size, size_t size) :
         cs120_abort("connect error");
     }
 
+    if (unlink(ATHERNET_SOCKET) != 0) { cs120_abort("unlink error"); }
+
     unix_socket_args receiver_args {
         .athernet = athernet,
         .queue = receive_queue,
