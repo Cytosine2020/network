@@ -20,7 +20,13 @@ struct ethhdr {
     unsigned short h_proto;
 }__attribute__((packed));
 #endif
-
+struct icmp {
+    uint8_t type;
+    uint8_t code;
+    uint16_t sum;
+    uint16_t ident;
+    uint16_t seq;
+};
 
 namespace cs120 {
 cs120_inline uint32_t ip_get_version(const struct ip &header) {
@@ -101,7 +107,7 @@ size_t get_ipv4_data_size(Slice<uint8_t> buffer);
 /// len : length of the data (in bytes)
 /// return : checksum in network byte order
 
-uint16_t composite_checksum(Slice<uint8_t> &buffer);
+uint16_t composite_checksum(Slice<uint8_t> buffer);
 
 void format(const struct ethhdr &object);
 

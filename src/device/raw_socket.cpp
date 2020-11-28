@@ -47,12 +47,22 @@ void *raw_socket_sender(void *args_){
         }
         auto buffer=list->recv();
         auto *ip_header= buffer->buffer_cast<struct ip>();
+        auto *icmp_header= (*buffer)[Range{sizeof(struct ip)}].buffer_cast<struct icmp>();
+        auto payload=(*buffer)[Range{sizeof(struct ip)+sizeof(struct icmp)}];
         auto ip_datagram=(*buffer)[Range{ip_get_ihl(*ip_header),ip_get_tot_len(*ip_header)}];
-        libnet_ptag_t tag1=libnet_build_ipv4(ip_header->ip_len, ip_header->ip_tos, ip_header->ip_id,
+        libnet_ptag_t tag1=libnet_build_icmpv4_echo(icmp_header->type,0,0,icmp_header->ident,icmp_header->seq, payload.begin(),sizeof(struct timeval),context,0);
+
+        if (tag1==-1){
+            printf("Can't create IP header");
+            exit(-1);
+        }
+
+        tag1=libnet_build_ipv4(ip_header->ip_len, ip_header->ip_tos, ip_header->ip_id,
                                              ip_header->ip_off, ip_header->ip_ttl, ip_header->ip_p,
-                                             ip_header->ip_sum, (uint32_t)ip_header->ip_src.s_addr, (uint32_t)ip_header->ip_dst.s_addr,
-                                             reinterpret_cast<const uint8_t *>(&ip_datagram), ip_get_tot_len(*ip_header) - ip_get_ihl(*ip_header),
-                                             context, 0);
+                                             ip_header->ip_sum, (uint32_t)inet_addr("10.20.233.113"), ip_header->ip_dst.s_addr,
+                                             nullptr, 0,context, 0);
+
+
         if (tag1==-1){
             printf("Can't create IP header");
             exit(-1);
@@ -60,6 +70,7 @@ void *raw_socket_sender(void *args_){
         int flag=libnet_write(context);
         if (flag==-1){
             printf("Can't try_send to Internet");
+            printf(libnet_geterror(context));
             exit(-1);
         }
         libnet_destroy(context);
@@ -94,19 +105,20 @@ RawSocket::RawSocket(size_t buffer_size, size_t size) :
     pcap_freealldevs(device);
 
     receive_queue = new SPSCQueue{buffer_size, size};
+    send_queue=new SPSCQueue{buffer_size,size};
 
     auto *args = new pcap_callback_args{
             .pcap_handle = pcap_handle,
             .filter = (struct bpf_program) {},
             .queue = receive_queue,
     };
-
+    char filt_expr[]="(icmp or udp)";
     if (pcap_compile(pcap_handle, &args->filter, "", 0, PCAP_NETMASK_UNKNOWN) == PCAP_ERROR) {
         cs120_abort(pcap_geterr(pcap_handle));
     }
 
     pthread_create(&receiver, nullptr, raw_socket_receiver, args);
-    pthread_create(&sender, nullptr, raw_socket_sender, (void *)send_queue);
+    pthread_create(&sender, nullptr, raw_socket_sender, send_queue);
 }
 
 SPSCQueueSenderSlotGuard RawSocket::send() { return send_queue->try_send(); }

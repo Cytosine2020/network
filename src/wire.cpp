@@ -14,7 +14,7 @@ size_t get_ipv4_data_size(Slice<uint8_t> buffer) {
 
 const char *bool_to_string(bool value) { return value ? "true" : "false"; }
 
-uint16_t composite_checksum(Slice<uint8_t> &buffer_) {
+uint16_t composite_checksum(Slice<uint8_t> buffer_) {
     if (buffer_.size() % 2 != 0) { cs120_abort("length is not multiple of 2!"); }
 
     Slice<uint16_t> buffer{reinterpret_cast<const uint16_t *>(buffer_.begin()), buffer_.size() / 2};
@@ -22,7 +22,6 @@ uint16_t composite_checksum(Slice<uint8_t> &buffer_) {
     uint32_t sum = 0;
 
     for (auto &item: buffer) { sum += item; }
-
     return static_cast<uint16_t>(~((sum & 0xffffu) + (sum >> 16u)));
 }
 
