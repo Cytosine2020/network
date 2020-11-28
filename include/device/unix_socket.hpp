@@ -12,6 +12,7 @@
 namespace cs120 {
 class UnixSocket : public BaseSocket {
 private:
+    pthread_t receiver, sender;
     SPSCQueue *receive_queue, *send_queue;
     int athernet;
 
