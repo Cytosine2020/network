@@ -5,12 +5,13 @@
 #ifndef CS120_ICMP_H
 #define CS120_ICMP_H
 #include <stdint.h>
+#include "utility"
 #include <netinet/in.h>
 #include "malloc.h"
 #include "sys/socket.h"
 #include "netinet/ip.h"
 
-struct icmp_frame {
+struct data_pass {
     uint8_t *data;
     size_t length;
 };
@@ -26,10 +27,14 @@ struct socket_ret {
     int socket_id;
     char *data;
 };
+struct icmp{
+    uint8_t type;
+    uint8_t code;
+    uint16_t sum;
+    uint16_t ident;
+    uint16_t seq;
+};
 
-int checksum_fun(uint8_t *data, size_t length, int choice);
 
-struct icmp_frame
-generate_icmp(enum Icmp_request type, uint16_t identifier, uint16_t sequence, uint8_t *data, size_t length);
 
 #endif //CS120_ICMP_H
