@@ -15,7 +15,7 @@ namespace cs120 {
 class RawSocket : public BaseSocket {
 private:
     pthread_t receiver;
-    SPSCQueue *receive_queue;
+    SPSCQueue *receive_queue, *send_queue;
 
 public:
     RawSocket(size_t buffer_size, size_t size);

@@ -14,7 +14,10 @@ find_package(LIBNET REQUIRED)
 
 include_directories(${PCAP_INCLUDE_DIR} ${LIBNET_INCLUDE_DIR} include)
 
-add_executable(nat-server src/main.cpp src/wire.cpp src/queue.cpp src/device/raw_socket.cpp src/device/unix_socket.cpp)
+add_executable(nat-server
+        src/main.cpp src/wire.cpp src/queue.cpp
+        src/device/raw_socket.cpp src/device/unix_socket.cpp
+        src/server/nat_server.cpp)
 target_link_libraries(nat-server pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
 if (APPLE)
@@ -22,14 +25,12 @@ if (APPLE)
             TARGET nat-server
             POST_BUILD
             COMMAND chmod 700 nat-server
-            VERBATIM
-    )
+            VERBATIM)
 elseif (UNIX)
     add_custom_command(
             TARGET nat-server
             POST_BUILD
             COMMAND chmod 700 nat-server && sudo setcap cap_net_admin,cap_net_raw=eip nat-server
             COMMENT "Grant access for raw socket"
-            VERBATIM
-    )
+            VERBATIM)
 endif ()

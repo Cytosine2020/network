@@ -2,6 +2,9 @@
 #define CS120_MOD_HPP
 
 
+#include "queue.hpp"
+
+
 namespace cs120 {
 class BaseSocket {
 public:

@@ -53,7 +53,8 @@ void *raw_socket_receiver(void *args_) {
 
 
 namespace cs120 {
-RawSocket::RawSocket(size_t buffer_size, size_t size) : receiver{}, receive_queue{nullptr} {
+RawSocket::RawSocket(size_t buffer_size, size_t size) :
+        receiver{}, receive_queue{nullptr}, send_queue{nullptr} {
     char pcap_error[PCAP_ERRBUF_SIZE]{};
     pcap_if_t *device = nullptr;
 
@@ -79,7 +80,7 @@ RawSocket::RawSocket(size_t buffer_size, size_t size) : receiver{}, receive_queu
     pthread_create(&receiver, nullptr, raw_socket_receiver, args);
 }
 
-SPSCQueueSenderSlotGuard RawSocket::send() { cs120_abort("unimplemented!"); }
+SPSCQueueSenderSlotGuard RawSocket::send() { return send_queue->send(); }
 
 SPSCQueueReceiverSlotGuard RawSocket::recv() { return receive_queue->recv(); }
 }

@@ -66,7 +66,7 @@ private:
     size_t index_increase(size_t index) const { return (index + 1) % size; }
 
     MutSlice<uint8_t> get_slot(size_t index) {
-        return inner[Range{index * buffer_size, (index + 1) * buffer_size}];
+        return inner[Range{index * buffer_size}][Range{0, buffer_size}];
     }
 
 public:
