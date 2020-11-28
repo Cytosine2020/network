@@ -8,7 +8,11 @@
 namespace cs120 {
 class BaseSocket {
 public:
+    virtual SPSCQueueSenderSlotGuard try_send() = 0;
+
     virtual SPSCQueueSenderSlotGuard send() = 0;
+
+    virtual SPSCQueueReceiverSlotGuard try_recv() = 0;
 
     virtual SPSCQueueReceiverSlotGuard recv() = 0;
 
