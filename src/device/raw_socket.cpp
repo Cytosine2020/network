@@ -14,7 +14,6 @@ struct pcap_callback_args {
     SPSCQueue *queue;
 };
 
-// todo: check if datagram is valid
 void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *packet) {
     auto *args = reinterpret_cast<pcap_callback_args *>(args_);
 
@@ -80,6 +79,8 @@ RawSocket::RawSocket() : receiver{}, receive_queue{nullptr} {
 
     pthread_create(&receiver, nullptr, raw_socket_receiver, args);
 }
+
+SPSCQueueSenderSlotGuard RawSocket::send() { cs120_abort("unimplemented!"); }
 
 SPSCQueueReceiverSlotGuard RawSocket::recv() { return receive_queue->recv(); }
 }

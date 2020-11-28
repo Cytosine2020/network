@@ -11,8 +11,6 @@ SPSCQueueSenderSlotGuard SPSCQueue::send() {
     } else {
         return SPSCQueueSenderSlotGuard{get_slot(end), *this};
     }
-
-// get_slot(end)[Range{0, item.size()}].shallow_copy_from_slice(item[Range{}]);
 }
 
 void SPSCQueue::commit() {
@@ -34,8 +32,6 @@ SPSCQueueReceiverSlotGuard SPSCQueue::recv() {
             variable.wait(guard);
         }
     }
-
-//    item.shallow_copy_from_slice(get_slot(start));
 
     return SPSCQueueReceiverSlotGuard{get_slot(start), *this};
 }
