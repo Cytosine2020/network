@@ -25,16 +25,15 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
 
     auto ip_datagram = eth_datagram[Range{sizeof(struct ethhdr)}];
 
-    auto *ip_header = ip_datagram.buffer_cast<struct ip>();
-    if (ip_header == nullptr || ip_datagram.size() < ip_get_tot_len(*ip_header)) { return; }
+    size_t size = get_ipv4_data_size(ip_datagram);
+    if (size == 0) { return; }
 
     auto slot = args->queue->try_send();
 
     if (slot->empty()) {
         cs120_warn("package loss!");
     } else {
-        auto range = Range{0, ip_get_tot_len(*ip_header)};
-        (*slot)[range].copy_from_slice(ip_datagram[range]);
+        (*slot)[Range{0, size}].copy_from_slice(ip_datagram[Range{0, size}]);
     }
 }
 

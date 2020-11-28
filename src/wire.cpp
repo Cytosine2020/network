@@ -4,15 +4,24 @@
 
 
 namespace cs120 {
+size_t get_ipv4_data_size(Slice<uint8_t> buffer) {
+    const auto *ip_header = buffer.buffer_cast<struct ip>();
+    if (ip_header == nullptr) { return 0; }
+    size_t size = ip_get_tot_len(*ip_header);
+    if (size > buffer.size()) { return 0; }
+    return size;
+}
+
 const char *bool_to_string(bool value) { return value ? "true" : "false"; }
 
-uint16_t composite_checksum(const void *addr_, size_t len) {
-    auto *addr = reinterpret_cast<const uint16_t *>(addr_);
-    if (len % 2 != 0) { cs120_abort("length is not multiple of 2!"); }
+uint16_t composite_checksum(Slice<uint8_t> &buffer_) {
+    if (buffer_.size() % 2 != 0) { cs120_abort("length is not multiple of 2!"); }
+
+    Slice<uint16_t> buffer{reinterpret_cast<const uint16_t *>(buffer_.begin()), buffer_.size() / 2};
 
     uint32_t sum = 0;
 
-    for (size_t i = 0; i * 2 < len; ++i) { sum += addr[i]; }
+    for (auto &item: buffer) { sum += item; }
 
     return static_cast<uint16_t>(~((sum & 0xffffu) + (sum >> 16u)));
 }
@@ -34,7 +43,8 @@ void format(const struct ethhdr &object) {
 }
 
 void format(const struct ip &object) {
-    const char *checksum = bool_to_string(composite_checksum(&object, ip_get_ihl(object)) == 0);
+    Slice<uint8_t> ip_header{reinterpret_cast<const uint8_t *>(&object), ip_get_ihl(object)};
+    const char *checksum = bool_to_string(composite_checksum(ip_header) == 0);
 
     printf("IP Header {\n");
     printf("\tversion: %d,\n", static_cast<uint32_t>(ip_get_version(object)));

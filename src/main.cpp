@@ -7,8 +7,27 @@ static constexpr size_t SOCKET_BUFFER_SIZE = 2048;
 
 
 int main() {
-    UnixSocket unix_socket{SOCKET_BUFFER_SIZE, 16};
-    RawSocket raw_socket{SOCKET_BUFFER_SIZE, 16};
+//    UnixSocket unix_socket{SOCKET_BUFFER_SIZE, 64};
+//
+//    Array<uint8_t> buffer{128};
+//
+//    for (size_t i = 0; i < 256; ++i) {
+//        for (auto &item: buffer) { item = i; }
+//
+//        {
+//            auto slot = unix_socket.send();
+//
+//            (*slot)[Range{0, buffer.size()}].copy_from_slice(buffer);
+//        }
+//
+//        {
+//            auto slot = unix_socket.recv();
+//
+//            format((*slot)[Range{0, 128}]);
+//        }
+//    }
+
+    RawSocket raw_socket{SOCKET_BUFFER_SIZE, 64};
 
     for (;;) {
         auto buffer = raw_socket.recv();
