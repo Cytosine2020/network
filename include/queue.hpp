@@ -78,15 +78,19 @@ public:
 
     SPSCQueue &operator=(const SPSCQueue &other) = delete;
 
+    SPSCQueueSenderSlotGuard try_send();
+
     SPSCQueueSenderSlotGuard send();
 
     void commit();
+
+    SPSCQueueReceiverSlotGuard try_recv();
 
     SPSCQueueReceiverSlotGuard recv();
 
     void claim();
 
-    ~SPSCQueue() = delete;
+    ~SPSCQueue() = default;
 };
 
 inline SPSCQueueSenderSlotGuard::~SPSCQueueSenderSlotGuard() {
@@ -94,7 +98,7 @@ inline SPSCQueueSenderSlotGuard::~SPSCQueueSenderSlotGuard() {
 }
 
 inline SPSCQueueReceiverSlotGuard::~SPSCQueueReceiverSlotGuard() {
-    queue.claim();
+    if (!inner.empty()) { queue.claim(); }
 }
 }
 

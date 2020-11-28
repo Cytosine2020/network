@@ -28,7 +28,7 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
     auto *ip_header = ip_datagram.buffer_cast<struct ip>();
     if (ip_header == nullptr || ip_datagram.size() < ip_get_tot_len(*ip_header)) { return; }
 
-    auto slot = args->queue->send();
+    auto slot = args->queue->try_send();
 
     if (slot->empty()) {
         cs120_warn("package loss!");
@@ -80,7 +80,7 @@ RawSocket::RawSocket(size_t buffer_size, size_t size) :
     pthread_create(&receiver, nullptr, raw_socket_receiver, args);
 }
 
-SPSCQueueSenderSlotGuard RawSocket::send() { return send_queue->send(); }
+SPSCQueueSenderSlotGuard RawSocket::send() { return send_queue->try_send(); }
 
 SPSCQueueReceiverSlotGuard RawSocket::recv() { return receive_queue->recv(); }
 }

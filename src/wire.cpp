@@ -6,7 +6,7 @@
 namespace cs120 {
 const char *bool_to_string(bool value) { return value ? "true" : "false"; }
 
-uint16_t compolete_checksum(const void *addr_, size_t len) {
+uint16_t composite_checksum(const void *addr_, size_t len) {
     auto *addr = reinterpret_cast<const uint16_t *>(addr_);
     if (len % 2 != 0) { cs120_abort("length is not multiple of 2!"); }
 
@@ -34,7 +34,7 @@ void format(const struct ethhdr &object) {
 }
 
 void format(const struct ip &object) {
-    const char *checksum = bool_to_string(compolete_checksum(&object, ip_get_ihl(object)) == 0);
+    const char *checksum = bool_to_string(composite_checksum(&object, ip_get_ihl(object)) == 0);
 
     printf("IP Header {\n");
     printf("\tversion: %d,\n", static_cast<uint32_t>(ip_get_version(object)));
