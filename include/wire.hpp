@@ -91,6 +91,8 @@ cs120_inline uint16_t udphdr_get_check(const struct udphdr &header) {
     return ntohs(header.uh_sum);
 }
 
+size_t get_ipv4_data_size(Slice<uint8_t> buffer);
+
 /// RFC 1071
 /// Calculates the Internet-checksum
 /// Valid for the IP, ICMP, TCP or UDP header
@@ -99,7 +101,7 @@ cs120_inline uint16_t udphdr_get_check(const struct udphdr &header) {
 /// len : length of the data (in bytes)
 /// return : checksum in network byte order
 
-uint16_t composite_checksum(const uint16_t *addr, size_t len);
+uint16_t composite_checksum(Slice<uint8_t> &buffer);
 
 void format(const struct ethhdr &object);
 
