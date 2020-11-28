@@ -4,6 +4,7 @@
 
 #include <queue>
 #include <vector>
+#include <atomic>
 #include <mutex>
 #include <condition_variable>
 
@@ -11,15 +12,58 @@
 
 
 namespace cs120 {
+class SPSCQueue;
+
+class SPSCQueueSenderSlotGuard {
+private:
+    MutSlice<uint8_t> inner;
+    SPSCQueue &queue;
+
+public:
+    SPSCQueueSenderSlotGuard(MutSlice<uint8_t> inner, SPSCQueue &queue) :
+            inner{inner}, queue{queue} {}
+
+    SPSCQueueSenderSlotGuard(const SPSCQueueSenderSlotGuard &other) = delete;
+
+    SPSCQueueSenderSlotGuard &operator=(const SPSCQueueSenderSlotGuard &other) = delete;
+
+    MutSlice<uint8_t> &operator*() { return inner; }
+
+    MutSlice<uint8_t> *operator->() { return &inner; }
+
+    ~SPSCQueueSenderSlotGuard();
+};
+
+class SPSCQueueReceiverSlotGuard {
+private:
+    MutSlice<uint8_t> inner;
+    SPSCQueue &queue;
+
+public:
+    SPSCQueueReceiverSlotGuard(MutSlice<uint8_t> inner, SPSCQueue &queue) :
+            inner{inner}, queue{queue} {}
+
+    SPSCQueueReceiverSlotGuard(const SPSCQueueSenderSlotGuard &other) = delete;
+
+    SPSCQueueReceiverSlotGuard &operator=(const SPSCQueueSenderSlotGuard &other) = delete;
+
+    MutSlice<uint8_t> &operator*() { return inner; }
+
+    MutSlice<uint8_t> *operator->() { return &inner; }
+
+    ~SPSCQueueReceiverSlotGuard();
+};
+
+
 class SPSCQueue {
 private:
     std::mutex lock, sender_lock, receiver_lock;
     std::condition_variable variable;
     Array<uint8_t> inner;
     size_t buffer_size, size;
-    size_t start, end;
+    std::atomic<size_t> start, end;
 
-    size_t index_increase(size_t index) { return (index + 1) % size; }
+    size_t index_increase(size_t index) const { return (index + 1) % size; }
 
     MutSlice<uint8_t> get_slot(size_t index) {
         return inner[Range{index * buffer_size, (index + 1) * buffer_size}];
@@ -34,16 +78,24 @@ public:
 
     SPSCQueue &operator=(const SPSCQueue &other) = delete;
 
-    bool send(Slice<uint8_t> item);
+    SPSCQueueSenderSlotGuard send();
 
     void commit();
 
-    Array<uint8_t> recv();
+    SPSCQueueReceiverSlotGuard recv();
 
     void claim();
 
     ~SPSCQueue() = delete;
 };
+
+inline SPSCQueueSenderSlotGuard::~SPSCQueueSenderSlotGuard() {
+    if (!inner.empty()) { queue.commit(); }
+}
+
+inline SPSCQueueReceiverSlotGuard::~SPSCQueueReceiverSlotGuard() {
+    queue.claim();
+}
 }
 
 

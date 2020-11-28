@@ -23,15 +23,20 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
     Slice<uint8_t> eth_datagram{packet, info->caplen};
 
     auto *eth_header = eth_datagram.buffer_cast<struct ethhdr>();
-    if (eth_header != nullptr && eth_header->h_proto != 8) { return; }
+    if (eth_header == nullptr || eth_header->h_proto != 8) { return; }
 
     auto ip_datagram = eth_datagram[Range{sizeof(struct ethhdr)}];
 
     auto *ip_header = ip_datagram.buffer_cast<struct iphdr>();
-    if (ip_header != nullptr && ip_datagram.size() < iphdr_tot_len(*ip_header)) { return; }
+    if (ip_header == nullptr || ip_datagram.size() < iphdr_get_tot_len(*ip_header)) { return; }
 
-    if (!args->queue->send(ip_datagram[Range{0, iphdr_tot_len(*ip_header)}])) {
+    auto slot = args->queue->send();
+
+    if (slot->empty()) {
         cs120_warn("package loss!");
+    } else {
+        auto range = Range{0, iphdr_get_tot_len(*ip_header)};
+        (*slot)[range].copy_from_slice(ip_datagram[range]);
     }
 }
 
@@ -76,7 +81,5 @@ RawSocket::RawSocket() : receiver{}, receive_queue{nullptr} {
     pthread_create(&receiver, nullptr, raw_socket_receiver, args);
 }
 
-Array<uint8_t> RawSocket::recv() {
-    return receive_queue->recv();
-}
+SPSCQueueReceiverSlotGuard RawSocket::recv() { return receive_queue->recv(); }
 }

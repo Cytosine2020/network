@@ -2,29 +2,30 @@
 
 
 namespace cs120 {
-bool SPSCQueue::send(Slice<uint8_t> item) {
-    std::unique_lock sender_guard{sender_lock};
+SPSCQueueSenderSlotGuard SPSCQueue::send() {
+    sender_lock.lock();
 
-    if (index_increase(end) == start) { return false; }
+    if (index_increase(end) == start) {
+        sender_lock.unlock();
+        return SPSCQueueSenderSlotGuard{MutSlice<uint8_t>{}, *this};
+    } else {
+        return SPSCQueueSenderSlotGuard{get_slot(end), *this};
+    }
 
-    get_slot(end)[Range{0, item.size()}].shallow_copy_from_slice(item[Range{}]);
-
-    std::unique_lock guard{lock};
-
-    end = index_increase(end);
-
-    variable.notify_one();
-
-    return true;
+// get_slot(end)[Range{0, item.size()}].shallow_copy_from_slice(item[Range{}]);
 }
 
 void SPSCQueue::commit() {
+    end.store(index_increase(end), std::memory_order_seq_cst);
+    sender_lock.unlock();
 
+    std::unique_lock guard{lock};
+    variable.notify_one();
 }
 
 
-Array<uint8_t> SPSCQueue::recv() {
-    std::unique_lock receiver_guard{receiver_lock};
+SPSCQueueReceiverSlotGuard SPSCQueue::recv() {
+    receiver_lock.lock();
 
     if (start == end) {
         std::unique_lock guard{lock};
@@ -34,18 +35,13 @@ Array<uint8_t> SPSCQueue::recv() {
         }
     }
 
-    Array <uint8_t> item{buffer_size};
+//    item.shallow_copy_from_slice(get_slot(start));
 
-    item.shallow_copy_from_slice(get_slot(start));
-
-    std::unique_lock guard{lock};
-
-    start = index_increase(start);
-
-    return item;
+    return SPSCQueueReceiverSlotGuard{get_slot(start), *this};
 }
 
 void SPSCQueue::claim() {
-
+    start.store(index_increase(start), std::memory_order_seq_cst);
+    receiver_lock.unlock();
 }
 }

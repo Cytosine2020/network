@@ -33,28 +33,28 @@ void format(const struct ethhdr &object) {
 
 void format(const struct iphdr &object) {
     const char *checksum_result =
-            composite_checksum(&object, iphdr_ihl(object) * 4) == 0 ? "true" : "false";
+            composite_checksum(&object, iphdr_get_ihl(object) * 4) == 0 ? "true" : "false";
 
     printf("IP Header {\n");
-    printf("\tversion: %d,\n", static_cast<uint32_t>(iphdr_version(object)));
-    printf("\tinternet header length: %d,\n", static_cast<uint32_t>(iphdr_ihl(object)) * 4);
-    printf("\ttype of service: %d,\n", static_cast<uint32_t>(iphdr_tos(object)));
-    printf("\ttotal length: %d,\n", iphdr_tot_len(object));
-    printf("\tidentification: %d,\n", iphdr_id(object));
-    printf("\ttime to live: %d,\n", static_cast<uint32_t>(iphdr_ttl(object)));
-    printf("\tprotocol: %d,\n", static_cast<uint32_t>(iphdr_protocol(object)));
+    printf("\tversion: %d,\n", static_cast<uint32_t>(iphdr_get_version(object)));
+    printf("\tinternet header length: %d,\n", static_cast<uint32_t>(iphdr_get_ihl(object)) * 4);
+    printf("\ttype of service: %d,\n", static_cast<uint32_t>(iphdr_get_tos(object)));
+    printf("\ttotal length: %d,\n", iphdr_get_tot_len(object));
+    printf("\tidentification: %d,\n", iphdr_get_id(object));
+    printf("\ttime to live: %d,\n", static_cast<uint32_t>(iphdr_get_ttl(object)));
+    printf("\tprotocol: %d,\n", static_cast<uint32_t>(iphdr_get_protocol(object)));
     printf("\theader checksum: %s,\n", checksum_result);
-    printf("\tsource ip: %s,\n", inet_ntoa(in_addr{iphdr_saddr(object)}));
-    printf("\tdestination ip: %s,\n", inet_ntoa(in_addr{iphdr_daddr(object)}));
+    printf("\tsource ip: %s,\n", inet_ntoa(iphdr_get_saddr(object)));
+    printf("\tdestination ip: %s,\n", inet_ntoa(iphdr_get_daddr(object)));
     printf("}\n");
 }
 
 void format(const udphdr &object) {
     printf("UDP Header {\n");
-    printf("\tsource port: %d,\n", udphdr_source(object));
-    printf("\tdestination port: %d,\n", udphdr_dest(object));
-    printf("\tlength: %d,\n", udphdr_len(object));
-    printf("\tchecksum: %d,\n", udphdr_check(object));
+    printf("\tsource port: %d,\n", udphdr_get_source(object));
+    printf("\tdestination port: %d,\n", udphdr_get_dest(object));
+    printf("\tlength: %d,\n", udphdr_get_len(object));
+    printf("\tchecksum: %d,\n", udphdr_get_check(object));
     printf("}\n");
 }
 

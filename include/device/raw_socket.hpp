@@ -26,7 +26,7 @@ public:
 
     RawSocket &operator=(RawSocket &&other) noexcept = default;
 
-    Array<uint8_t> recv();
+    SPSCQueueReceiverSlotGuard recv();
 
     ~RawSocket() = default;
 };

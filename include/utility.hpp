@@ -15,9 +15,9 @@ namespace cs120 {
 #define cs120_unused __attribute__((unused))
 #define cs120_no_return __attribute__((noreturn))
 #if defined(__DEBUG__)
-#define cs120_inline
+#define cs120_inline inline
 #else
-#define cs120_inline inline __attribute__((__always_inline__))
+#define cs120_inline inline __attribute__((always_inline))
 #endif
 
 cs120_static_inline void _warn(const char *file, int line, const char *msg) {
@@ -304,6 +304,8 @@ private:
 public:
     using Item = T;
 
+    MutSlice() : inner{nullptr}, size_{0} {}
+
     MutSlice(Array<T> &other) : inner{other.begin()}, size_{other.size()} {}
 
     MutSlice(T *inner, size_t size_) : inner{inner}, size_{size_} {}
@@ -332,6 +334,8 @@ private:
 
 public:
     using Item = T;
+
+    Slice() : inner{nullptr}, size_{0} {}
 
     Slice(const Array<T> &other) : inner{other.begin()}, size_{other.size()} {}
 
