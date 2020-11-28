@@ -1,5 +1,3 @@
-#include <unistd.h>
-
 #include "device/raw_socket.hpp"
 
 using namespace cs120;
@@ -9,26 +7,20 @@ int main() {
     RawSocket raw_socket{};
 
     for (;;) {
-        auto packet = raw_socket.recv();
+        auto buffer = raw_socket.recv();
 
-        Slice<uint8_t> eth_datagram{packet.data(), packet.size()};
+        auto *ip_header = buffer.buffer_cast<struct iphdr>();
 
-        auto *eth = (struct ethhdr *) eth_datagram.begin();
+        auto ip_datagram = buffer[Range{0,  iphdr_tot_len(*ip_header)}];
 
-        if (eth->h_proto != 8) { continue; }
+        if (iphdr_version(*ip_header) != 4u) { continue; }
 
-        auto eth_data = eth_datagram[Range{sizeof(struct ethhdr)}];
+        if (iphdr_protocol(*ip_header) != 17) { continue; }
 
-        auto *ip = (struct iphdr *) eth_data.begin();
+        format(*ip_header);
 
-        if (ip->iphdr_version != 4u) { continue; }
-
-        format(*ip);
-
-        if (ip->iphdr_protocol != 17) { continue; }
-
-        auto ip_data = eth_data[Range{static_cast<size_t>(ip->iphdr_ihl) * 4}];
-        auto *udp = (struct udphdr *) ip_data.begin();
+        auto ip_data = ip_datagram[Range{static_cast<size_t>(iphdr_ihl(*ip_header)) * 4}];
+        auto *udp = ip_data.buffer_cast<struct udphdr>();
 
         format(*udp);
 

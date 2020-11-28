@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <cstring>
 #include <cstdlib>
+#include <cstdint>
 
 
 namespace cs120 {
@@ -97,30 +98,168 @@ T divide_ceil(T a, T b) {
 
 
 struct Range {
-    size_t start;
-    size_t end;
+    size_t begin_;
+    size_t end_;
 
-    Range() : start{0}, end{0} {}
+    Range() : begin_{0}, end_{0} {}
 
-    explicit Range(size_t start) : start{start}, end{0} {}
+    explicit Range(size_t start) : begin_{start}, end_{0} {}
 
-    Range(size_t start, size_t end) : start{start}, end{end} {}
+    Range(size_t start, size_t end) : begin_{start}, end_{end} {}
+
+    size_t begin() const { return begin_; }
+
+    size_t end() const { return end_; }
 };
 
 
 template<typename T>
-class MutSlice;
+class Array;
 
 template<typename T>
 class Slice;
 
 template<typename T>
-class Array {
+class MutSlice;
+
+
+template<typename SubT, typename T>
+struct IndexTrait {
+private:
+    const SubT *sub_type() const { return reinterpret_cast<const SubT *>(this); }
+
+public:
+    const T &operator[](size_t index) const {
+        if (index >= sub_type()->size()) { cs120_abort("index out of boundary!"); }
+
+        return sub_type()->begin()[index];
+    }
+
+    Slice<T> operator[](Range range) const {
+        if (range.end() == 0) { range.end_ = sub_type()->size(); }
+
+        if (range.begin() > range.end() || range.end() > sub_type()->size()) {
+            cs120_abort("index out of boundary!");
+        }
+
+        return Slice<T>{sub_type()->begin() + range.begin(), range.end() - range.begin()};
+    }
+};
+
+template<typename SubT, typename T>
+struct MutIndexTrait : public IndexTrait<SubT, T> {
+private:
+    SubT *sub_type() { return reinterpret_cast<SubT *>(this); }
+
+public:
+    T &operator[](size_t index) {
+        if (index >= sub_type()->size()) { cs120_abort("index out of boundary!"); }
+
+        return sub_type()->begin()[index];
+    }
+
+    MutSlice<T> operator[](Range range) {
+        if (range.end() == 0) { range.end_ = sub_type()->size(); }
+
+        if (range.begin() > range.end() || range.end() > sub_type()->size()) {
+            cs120_abort("index out of boundary!");
+        }
+
+        return MutSlice<T>{sub_type()->begin() + range.begin(), range.end() - range.begin()};
+    }
+};
+
+template<typename SubT, typename T>
+struct SliceTrait {
+private:
+    const SubT *sub_type() const { return reinterpret_cast<const SubT *>(this); }
+
+public:
+    Array<T> clone() const {
+        Array other{this->size_};
+
+        for (size_t i = 0; i < this->size_; ++i) {
+            other.begin()[i] = this->begin()[i];
+        }
+
+        return other;
+    }
+
+    Array<T> shallow_clone() const {
+        Array<T> other{};
+        other.inner = new T[sub_type()->size()];
+        other.size_ = sub_type()->size();
+
+        memcpy(other.inner, this->inner, sub_type()->size() * sizeof(T));
+
+        return other;
+    }
+
+    bool empty() const { return sub_type()->size() == 0; }
+};
+
+template<typename SubT, typename T>
+struct MutSliceTrait : SliceTrait<SubT, T> {
+private:
+    SubT *sub_type() { return reinterpret_cast<SubT *>(this); }
+
+public:
+    void copy_from_slice(Slice<T> other) {
+        if (sub_type()->size() != other.size()) { cs120_abort("slice size does not match!"); }
+
+        for (size_t i = 0; i < sub_type()->size(); ++i) {
+            sub_type()->begin()[i] = other.begin()[i];
+        }
+    }
+
+    void shallow_copy_from_slice(Slice<T> other) {
+        if (sub_type()->size() != other.size()) { cs120_abort("slice size does not match!"); }
+
+        memcpy(sub_type()->begin(), other.begin(), sub_type()->size() * sizeof(T));
+    }
+};
+
+template<typename SubT>
+struct BufferTrait {
+private:
+    const SubT *sub_type() const { return reinterpret_cast<const SubT *>(this); }
+
+public:
+    template<typename T>
+    const T *buffer_cast() const {
+        if (!std::is_same<typename SubT::Item, uint8_t>::value) { return nullptr; }
+        if (sub_type()->size() < sizeof(T)) { return nullptr; }
+        return reinterpret_cast<const T *>(sub_type()->begin());
+    }
+};
+
+template<typename SubT>
+struct MutBufferTrait : public BufferTrait<SubT> {
+private:
+    SubT *sub_type() { return reinterpret_cast<SubT *>(this); }
+
+public:
+    template<typename T>
+    T *buffer_cast() {
+        if (!std::is_same<typename SubT::Item, uint8_t>::value) { return nullptr; }
+        if (sub_type()->size() < sizeof(T)) { return nullptr; }
+        else { return reinterpret_cast<T *>(sub_type()->begin()); }
+    }
+};
+
+
+template<typename T>
+class Array :
+        public MutIndexTrait<Array<T>, T>,
+        public MutSliceTrait<Array<T>, T>,
+        public MutBufferTrait<Array<T>> {
 private:
     T *inner;
     size_t size_;
 
 public:
+    using Item = T;
+
     Array() : inner{nullptr}, size_{0} {}
 
     explicit Array(size_t size) : inner{new T[size]{}}, size_{size} {}
@@ -140,61 +279,7 @@ public:
         return *this;
     }
 
-    Array clone() const {
-        Array other{this->size_};
-
-        for (size_t i = 0; i < this->size_; ++i) {
-            other.begin()[i] = this->begin()[i];
-        }
-
-        return other;
-    }
-
-    Array shallow_clone() const {
-        Array other{};
-        other.inner = new T[size_];
-        other.size_ = size_;
-
-        memcpy(other.inner, this->inner, size_ * sizeof(T));
-
-        return other;
-    }
-
-    T &operator[](size_t index) {
-        if (index >= size_) { cs120_abort("index out of boundary!"); }
-
-        return inner[index];
-    }
-
-    const T &operator[](size_t index) const {
-        if (index >= size_) { cs120_abort("index out of boundary!"); }
-
-        return inner[index];
-    }
-
-    MutSlice<T> operator[](Range range) {
-        if (range.end == 0) { range.end = size(); }
-
-        if (range.start > range.end || range.end > size_) {
-            cs120_abort("index out of boundary!");
-        }
-
-        return MutSlice<T>{inner + range.start, range.end - range.start};
-    }
-
-    Slice<T> operator[](Range range) const {
-        if (range.end == 0) { range.end = size(); }
-
-        if (range.start > range.end || range.end > size_) {
-            cs120_abort("index out of boundary!");
-        }
-
-        return Slice<T>{inner + range.start, range.end - range.start};
-    }
-
     size_t size() const { return size_; }
-
-    bool empty() const { return size() == 0; }
 
     T *begin() { return inner; }
 
@@ -208,69 +293,22 @@ public:
 };
 
 template<typename T>
-class MutSlice {
+class MutSlice :
+        public MutIndexTrait<Array<T>, T>,
+        public MutSliceTrait<Array<T>, T>,
+        public MutBufferTrait<Array<T>> {
 private:
     T *inner;
     size_t size_;
 
 public:
+    using Item = T;
+
+    MutSlice(Array<T> &other) : inner{other.begin()}, size_{other.size()} {}
+
     MutSlice(T *inner, size_t size_) : inner{inner}, size_{size_} {}
 
-    Array<T> clone() const {
-        Array<T> other{this->size_};
-
-        for (size_t i = 0; i < this->size_; ++i) {
-            other.begin()[i] = this->begin()[i];
-        }
-
-        return other;
-    }
-
-    Array<T> shallow_clone() const {
-        Array<T> other{};
-        other.inner = new T[size_];
-        other.size_ = size_;
-
-        memcpy(other.inner, this->inner, size_ * sizeof(T));
-
-        return other;
-    }
-
-    T &operator[](size_t index) {
-        if (index >= size_) { cs120_abort("index out of boundary!"); }
-
-        return inner[index];
-    }
-
-    const T &operator[](size_t index) const {
-        if (index >= size_) { cs120_abort("index out of boundary!"); }
-
-        return inner[index];
-    }
-
-    MutSlice<T> operator[](Range range) {
-        if (range.end == 0) { range.end = size(); }
-
-        if (range.start > range.end || range.end > size_) {
-            cs120_abort("index out of boundary!");
-        }
-
-        return MutSlice<T>{inner + range.start, range.end - range.start};
-    }
-
-    Slice<T> operator[](Range range) const {
-        if (range.end == 0) { range.end = size(); }
-
-        if (range.start > range.end || range.end > size_) {
-            cs120_abort("index out of boundary!");
-        }
-
-        return Slice<T>{inner + range.start, range.end - range.start};
-    }
-
     size_t size() const { return size_; }
-
-    bool empty() const { return size() == 0; }
 
     T *begin() { return inner; }
 
@@ -284,55 +322,24 @@ public:
 };
 
 template<typename T>
-class Slice {
+class Slice :
+        public IndexTrait<Array<T>, T>,
+        public SliceTrait<Array<T>, T>,
+        public BufferTrait<Array<T>> {
 private:
     const T *inner;
     size_t size_;
 
 public:
+    using Item = T;
+
+    Slice(const Array<T> &other) : inner{other.begin()}, size_{other.size()} {}
+
     Slice(MutSlice<T> other) : inner{other.begin()}, size_{other.size()} {}
 
     Slice(const T *inner, size_t size_) : inner{inner}, size_{size_} {}
 
-    Array<T> clone() const {
-        Array<T> other{this->size_};
-
-        for (size_t i = 0; i < this->size_; ++i) {
-            other.begin()[i] = this->begin()[i];
-        }
-
-        return other;
-    }
-
-    Array<T> shallow_clone() const {
-        Array <T> other{};
-        other.inner = new T[size_];
-        other.size_ = size_;
-
-        memcpy(other.inner, this->inner, size_ * sizeof(T));
-
-        return other;
-    }
-
-    const T &operator[](size_t index) const {
-        if (index >= size_) { cs120_abort("index out of boundary!"); }
-
-        return inner[index];
-    }
-
-    Slice<T> operator[](Range range) const {
-        if (range.end == 0) { range.end = size(); }
-
-        if (range.start > range.end || range.end > size_) {
-            cs120_abort("index out of boundary!");
-        }
-
-        return Slice<T>{inner + range.start, range.end - range.start};
-    }
-
     size_t size() const { return size_; }
-
-    bool empty() const { return size() == 0; }
 
     const T *begin() const { return inner; }
 
