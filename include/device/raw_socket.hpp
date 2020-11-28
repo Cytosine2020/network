@@ -24,9 +24,13 @@ public:
 
     RawSocket &operator=(RawSocket &&other) noexcept = default;
 
-    SPSCQueueSenderSlotGuard send() final;
+    SPSCQueueSenderSlotGuard try_send() final { return send_queue->try_send(); }
 
-    SPSCQueueReceiverSlotGuard recv() final;
+    SPSCQueueSenderSlotGuard send() final { return send_queue->send(); }
+
+    SPSCQueueReceiverSlotGuard try_recv() final { return receive_queue->try_recv(); }
+
+    SPSCQueueReceiverSlotGuard recv() final { return receive_queue->recv(); }
 
     ~RawSocket() override = default;
 };

@@ -80,8 +80,4 @@ UnixSocket::UnixSocket(size_t buffer_size, size_t size) :
     pthread_create(&receiver, nullptr, unix_socket_receiver, &receiver_args);
     pthread_create(&sender, nullptr, unix_socket_sender, &sender_args);
 }
-
-SPSCQueueSenderSlotGuard UnixSocket::send() { return send_queue->send(); }
-
-SPSCQueueReceiverSlotGuard UnixSocket::recv() { return receive_queue->recv(); }
 }
