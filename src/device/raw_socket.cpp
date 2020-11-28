@@ -79,7 +79,7 @@ RawSocket::RawSocket(size_t buffer_size, size_t size) :
     pthread_create(&receiver, nullptr, raw_socket_receiver, args);
 }
 
-SPSCQueueSenderSlotGuard RawSocket::send() { return send_queue->try_send(); }
+SPSCQueueSenderSlotGuard RawSocket::send() { return send_queue->send(); }
 
 SPSCQueueReceiverSlotGuard RawSocket::recv() { return receive_queue->recv(); }
 }

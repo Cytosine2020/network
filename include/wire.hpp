@@ -101,7 +101,7 @@ size_t get_ipv4_data_size(Slice<uint8_t> buffer);
 /// len : length of the data (in bytes)
 /// return : checksum in network byte order
 
-uint16_t composite_checksum(Slice<uint8_t> &buffer);
+uint16_t composite_checksum(Slice<uint8_t> buffer);
 
 void format(const struct ethhdr &object);
 

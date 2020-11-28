@@ -5,6 +5,7 @@
 
 
 const char *ATHERNET_SOCKET = "/tmp/athernet.socket";
+const size_t ATHERNET_MTU = 256;
 
 
 namespace {
@@ -21,8 +22,8 @@ void *unix_socket_sender(void *args_) {
 
         auto slot = args->queue->recv();
 
-        ssize_t size = send(args->athernet, slot->begin(), slot->size(), 0);
-        if (size < 0) { cs120_abort("send error"); }
+        ssize_t size = send(args->athernet, slot->begin(), ATHERNET_MTU, 0);
+        if (size != ATHERNET_MTU) { cs120_abort("send error"); }
     }
 
     return nullptr;
@@ -32,10 +33,14 @@ void *unix_socket_receiver(void *args_) {
     for (;;) {
         auto *args = static_cast<unix_socket_args *>(args_);
 
-        auto slot = args->queue->send();
+        auto slot = args->queue->try_send();
 
-        ssize_t size = recv(args->athernet, slot->begin(), slot->size(), 0);
-        if (size < 0) { cs120_abort("recv error"); }
+        if (slot->empty()) {
+            cs120_warn("package loss!");
+        } else {
+            ssize_t size = recv(args->athernet, slot->begin(), slot->size(), 0);
+            if (size != ATHERNET_MTU) { cs120_abort("recv error"); }
+        }
     }
 
     return nullptr;
@@ -76,7 +81,7 @@ UnixSocket::UnixSocket(size_t buffer_size, size_t size) :
     pthread_create(&sender, nullptr, unix_socket_sender, &sender_args);
 }
 
-SPSCQueueSenderSlotGuard UnixSocket::send() { return send_queue->try_send(); }
+SPSCQueueSenderSlotGuard UnixSocket::send() { return send_queue->send(); }
 
 SPSCQueueReceiverSlotGuard UnixSocket::recv() { return receive_queue->recv(); }
 }
