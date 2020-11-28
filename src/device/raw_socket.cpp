@@ -28,7 +28,7 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
     auto *ip_header = ip_datagram.buffer_cast<struct ip>();
     if (ip_header == nullptr || ip_datagram.size() < ip_get_tot_len(*ip_header)) { return; }
 
-    auto slot = args->queue->send();
+    auto slot = args->queue->try_send();
 
     if (slot->empty()) {
         cs120_warn("package loss!");
@@ -37,7 +37,36 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
         (*slot)[range].copy_from_slice(ip_datagram[range]);
     }
 }
+void *raw_socket_sender(void *args_){
+    SPSCQueue* list=(SPSCQueue *)args_;
+    for (;;){
+        char err_buf[LIBNET_ERRBUF_SIZE];
+        libnet_t *context=libnet_init(LIBNET_RAW4,NULL,err_buf);
+        if (context==NULL){
+            printf("%s",err_buf);
+            exit(-1);
+        }
+        auto buffer=list->recv();
+        auto *ip_header= buffer->buffer_cast<struct ip>();
+        auto ip_datagram=(*buffer)[Range{ip_get_ihl(*ip_header),ip_get_tot_len(*ip_header)}];
+        libnet_ptag_t tag1=libnet_build_ipv4(ip_header->ip_len, ip_header->ip_tos, ip_header->ip_id,
+                                             ip_header->ip_off, ip_header->ip_ttl, ip_header->ip_p,
+                                             ip_header->ip_sum, (uint32_t)ip_header->ip_src.s_addr, (uint32_t)ip_header->ip_dst.s_addr,
+                                             reinterpret_cast<const uint8_t *>(&ip_datagram), ip_get_tot_len(*ip_header) - ip_get_ihl(*ip_header),
+                                             context, 0);
+        if (tag1==-1){
+            printf("Can't create IP header");
+            exit(-1);
+        }
+        int flag=libnet_write(context);
+        if (flag==-1){
+            printf("Can't try_send to Internet");
+            exit(-1);
+        }
+        libnet_destroy(context);
 
+    }
+}
 void *raw_socket_receiver(void *args_) {
     auto *args = reinterpret_cast<pcap_callback_args *>(args_);
     auto *pcap_args = reinterpret_cast<u_char *>(args);
@@ -54,7 +83,7 @@ void *raw_socket_receiver(void *args_) {
 
 namespace cs120 {
 RawSocket::RawSocket(size_t buffer_size, size_t size) :
-        receiver{}, receive_queue{nullptr}, send_queue{nullptr} {
+      receiver{},sender{}, receive_queue{nullptr}, send_queue{nullptr} {
     char pcap_error[PCAP_ERRBUF_SIZE]{};
     pcap_if_t *device = nullptr;
 
@@ -78,9 +107,10 @@ RawSocket::RawSocket(size_t buffer_size, size_t size) :
     }
 
     pthread_create(&receiver, nullptr, raw_socket_receiver, args);
+    pthread_create(&sender, nullptr, raw_socket_sender, (void *)send_queue);
 }
 
-SPSCQueueSenderSlotGuard RawSocket::send() { return send_queue->send(); }
+SPSCQueueSenderSlotGuard RawSocket::send() { return send_queue->try_send(); }
 
 SPSCQueueReceiverSlotGuard RawSocket::recv() { return receive_queue->recv(); }
 }

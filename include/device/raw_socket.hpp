@@ -2,7 +2,7 @@
 #define CS120_RAW_SOCKET_HPP
 
 #include "pthread.h"
-
+#include "libnet.h"
 #include "pcap/pcap.h"
 
 #include "utility.hpp"
@@ -14,7 +14,7 @@
 namespace cs120 {
 class RawSocket : public BaseSocket {
 private:
-    pthread_t receiver;
+    pthread_t receiver,sender;
     SPSCQueue *receive_queue, *send_queue;
 
 public:

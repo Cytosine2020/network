@@ -9,7 +9,10 @@ static constexpr size_t SOCKET_BUFFER_SIZE = 2048;
 int main() {
 //    UnixSocket unix_socket{SOCKET_BUFFER_SIZE, 16};
     RawSocket raw_socket{SOCKET_BUFFER_SIZE, 16};
+    for (int i=0;i<10;i++){
+        struct ip *ip_header=new ip();
 
+    }
     for (;;) {
         auto buffer = raw_socket.recv();
 

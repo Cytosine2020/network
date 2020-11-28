@@ -2,7 +2,7 @@
 
 
 namespace cs120 {
-SPSCQueueSenderSlotGuard SPSCQueue::send() {
+SPSCQueueSenderSlotGuard SPSCQueue::try_send() {
     sender_lock.lock();
 
     if (index_increase(end) == start) {
