@@ -44,6 +44,8 @@ private:
         auto ip_data = datagram[Range{ip_get_ihl(*ip_header), ip_get_tot_len(*ip_header)}];
 
         switch (ip_get_protocol(*ip_header)) {
+            case 1:
+                return nullptr;
             case 17:
             {
                 auto *udp_header = ip_data.buffer_cast<struct udphdr>();

@@ -28,6 +28,10 @@ void *NatServer::nat_lan_to_wan(void *args_) {
                 wan_port = lowest_free_port;
                 args->nat_table[wan_port].store(value, std::memory_order_seq_cst);
                 args->nat_reverse_table.emplace(value, wan_port);
+                ++lowest_free_port;
+                if (lowest_free_port >= NAT_PORTS_BASE + NAT_PORTS_SIZE) {
+                    cs120_abort("nat ports used up!");
+                }
             } else {
                 wan_port = table_ptr->second;
             }
