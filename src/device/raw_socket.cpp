@@ -1,4 +1,3 @@
-#include <vector>
 #include <numeric>
 #include "pthread.h"
 
@@ -26,15 +25,15 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
 
     auto ip_datagram = eth_datagram[Range{sizeof(struct ethhdr)}];
 
-    auto *ip_header = ip_datagram.buffer_cast<struct iphdr>();
-    if (ip_header == nullptr || ip_datagram.size() < iphdr_get_tot_len(*ip_header)) { return; }
+    auto *ip_header = ip_datagram.buffer_cast<struct ip>();
+    if (ip_header == nullptr || ip_datagram.size() < ip_get_tot_len(*ip_header)) { return; }
 
     auto slot = args->queue->send();
 
     if (slot->empty()) {
         cs120_warn("package loss!");
     } else {
-        auto range = Range{0, iphdr_get_tot_len(*ip_header)};
+        auto range = Range{0, ip_get_tot_len(*ip_header)};
         (*slot)[range].copy_from_slice(ip_datagram[range]);
     }
 }
@@ -54,18 +53,18 @@ void *raw_socket_receiver(void *args_) {
 
 
 namespace cs120 {
-RawSocket::RawSocket() : receiver{}, receive_queue{nullptr} {
+RawSocket::RawSocket(size_t buffer_size, size_t size) : receiver{}, receive_queue{nullptr} {
     char pcap_error[PCAP_ERRBUF_SIZE]{};
     pcap_if_t *device = nullptr;
 
     if (pcap_findalldevs(&device, pcap_error) == PCAP_ERROR) { cs120_abort(pcap_error); }
 
-    pcap_t *pcap_handle = pcap_open_live(device->name, SOCKET_BUFFER_SIZE, 0, 1, pcap_error);
+    pcap_t *pcap_handle = pcap_open_live(device->name, buffer_size, 0, 1, pcap_error);
     if (pcap_handle == nullptr) { cs120_abort(pcap_error); }
 
     pcap_freealldevs(device);
 
-    receive_queue = new SPSCQueue{SOCKET_BUFFER_SIZE, 16};
+    receive_queue = new SPSCQueue{buffer_size, size};
 
     auto *args = new pcap_callback_args{
             .pcap_handle = pcap_handle,

@@ -10,8 +10,11 @@
 namespace cs120 {
 class UnixSocket : public BaseSocket {
 private:
+    SPSCQueue *receive_queue, *send_queue;
 
 public:
+    UnixSocket(size_t buffer_size, size_t size);
+
     SPSCQueueSenderSlotGuard send() final;
 
     SPSCQueueReceiverSlotGuard recv() final;

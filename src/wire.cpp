@@ -4,8 +4,10 @@
 
 
 namespace cs120 {
-uint16_t composite_checksum(const void *addr_, size_t len) {
-    const uint16_t *addr = reinterpret_cast<const uint16_t *>(addr_);
+const char *bool_to_string(bool value) { return value ? "true" : "false"; }
+
+uint16_t compolete_checksum(const void *addr_, size_t len) {
+    auto *addr = reinterpret_cast<const uint16_t *>(addr_);
     if (len % 2 != 0) { cs120_abort("length is not multiple of 2!"); }
 
     uint32_t sum = 0;
@@ -31,21 +33,23 @@ void format(const struct ethhdr &object) {
     printf("}\n");
 }
 
-void format(const struct iphdr &object) {
-    const char *checksum_result =
-            composite_checksum(&object, iphdr_get_ihl(object) * 4) == 0 ? "true" : "false";
+void format(const struct ip &object) {
+    const char *checksum = bool_to_string(compolete_checksum(&object, ip_get_ihl(object)) == 0);
 
     printf("IP Header {\n");
-    printf("\tversion: %d,\n", static_cast<uint32_t>(iphdr_get_version(object)));
-    printf("\tinternet header length: %d,\n", static_cast<uint32_t>(iphdr_get_ihl(object)) * 4);
-    printf("\ttype of service: %d,\n", static_cast<uint32_t>(iphdr_get_tos(object)));
-    printf("\ttotal length: %d,\n", iphdr_get_tot_len(object));
-    printf("\tidentification: %d,\n", iphdr_get_id(object));
-    printf("\ttime to live: %d,\n", static_cast<uint32_t>(iphdr_get_ttl(object)));
-    printf("\tprotocol: %d,\n", static_cast<uint32_t>(iphdr_get_protocol(object)));
-    printf("\theader checksum: %s,\n", checksum_result);
-    printf("\tsource ip: %s,\n", inet_ntoa(iphdr_get_saddr(object)));
-    printf("\tdestination ip: %s,\n", inet_ntoa(iphdr_get_daddr(object)));
+    printf("\tversion: %d,\n", static_cast<uint32_t>(ip_get_version(object)));
+    printf("\tinternet header length: %d,\n", static_cast<uint32_t>(ip_get_ihl(object)));
+    printf("\ttype of service: %d,\n", static_cast<uint32_t>(ip_get_tos(object)));
+    printf("\ttotal length: %d,\n", ip_get_tot_len(object));
+    printf("\tidentification: %d,\n", ip_get_id(object));
+    printf("\tdo not fragment: %s,\n", bool_to_string(ip_get_do_not_fragment(object)));
+    printf("\tmore fragment: %s,\n", bool_to_string(ip_get_more_fragment(object)));
+    printf("\toffset: %d,\n", ip_get_offset(object));
+    printf("\ttime to live: %d,\n", static_cast<uint32_t>(ip_get_ttl(object)));
+    printf("\tprotocol: %d,\n", static_cast<uint32_t>(ip_get_protocol(object)));
+    printf("\theader checksum: %s,\n", checksum);
+    printf("\tsource ip: %s,\n", inet_ntoa(ip_get_saddr(object)));
+    printf("\tdestination ip: %s,\n", inet_ntoa(ip_get_daddr(object)));
     printf("}\n");
 }
 

@@ -1,7 +1,6 @@
 #ifndef CS120_RAW_SOCKET_HPP
 #define CS120_RAW_SOCKET_HPP
 
-#include <vector>
 #include "pthread.h"
 
 #include "pcap/pcap.h"
@@ -13,15 +12,13 @@
 
 
 namespace cs120 {
-static constexpr size_t SOCKET_BUFFER_SIZE = 2048;
-
 class RawSocket : public BaseSocket {
 private:
     pthread_t receiver;
     SPSCQueue *receive_queue;
 
 public:
-    RawSocket();
+    RawSocket(size_t buffer_size, size_t size);
 
     RawSocket(RawSocket &&other) noexcept = default;
 
