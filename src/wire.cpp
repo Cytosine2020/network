@@ -7,7 +7,7 @@
 
 
 namespace cs120 {
-size_t get_ipv4_data_size(Slice<uint8_t> buffer) {
+size_t get_ipv4_total_size(Slice<uint8_t> buffer) {
     const auto *ip_header = buffer.buffer_cast<struct ip>();
     if (ip_header == nullptr) { return 0; }
     size_t size = ip_get_tot_len(*ip_header);

@@ -11,6 +11,7 @@ struct pcap_callback_args {
     pcap_t *pcap_handle;
     struct bpf_program filter;
     SPSCQueue *queue;
+    uint32_t ip_addr;
 };
 
 void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *packet) {
@@ -23,9 +24,14 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
     auto *eth_header = eth_datagram.buffer_cast<struct ethhdr>();
     if (eth_header == nullptr || eth_header->h_proto != 8) { return; }
 
+    auto *ip_header = eth_datagram.buffer_cast<struct ip>();
+
+    uint32_t src_ip = ip_get_saddr(*ip_header).s_addr;
+    if (src_ip == args->ip_addr) { return; }
+
     auto ip_datagram = eth_datagram[Range{sizeof(struct ethhdr)}];
 
-    size_t size = get_ipv4_data_size(ip_datagram);
+    size_t size = get_ipv4_total_size(ip_datagram);
     if (size == 0) { return; }
 
     auto slot = args->queue->try_send();
@@ -87,7 +93,7 @@ void *raw_socket_sender(void *args_) {
 
 
 namespace cs120 {
-RawSocket::RawSocket(size_t size) :
+RawSocket::RawSocket(size_t size, uint32_t ip_addr) :
         receiver{}, sender{}, receive_queue{nullptr}, send_queue{nullptr} {
     char pcap_error[PCAP_ERRBUF_SIZE]{};
     pcap_if_t *device = nullptr;
@@ -107,14 +113,11 @@ RawSocket::RawSocket(size_t size) :
             .pcap_handle = pcap_handle,
             .filter = (struct bpf_program) {},
             .queue = receive_queue,
+            .ip_addr = ip_addr,
     };
 
-    struct in_addr ip_addr{};
-    ip_addr.s_addr = get_local_ip();
-    char *my_ip = inet_ntoa(ip_addr);
-
     char expr[100]{};
-    snprintf(expr, 100, "(icmp or udp) and (dst host %s)", my_ip);
+    snprintf(expr, 100, "(icmp or udp) and (dst host %s)", inet_ntoa(in_addr{ip_addr}));
 
     if (pcap_compile(pcap_handle, &args->filter, expr, 0, PCAP_NETMASK_UNKNOWN) == PCAP_ERROR) {
         cs120_abort(pcap_geterr(pcap_handle));

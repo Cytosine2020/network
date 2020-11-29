@@ -19,7 +19,7 @@ private:
     SPSCQueue *receive_queue, *send_queue;
 
 public:
-    RawSocket(size_t size);
+    RawSocket(size_t size, uint32_t ip_addr);
 
     RawSocket(RawSocket &&other) noexcept = default;
 

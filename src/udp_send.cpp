@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
 
     std::unique_ptr<BaseSocket> sock(new AthernetSocket{64});
 
-    printf("sending file `%s`, size %ld\n", argv[1], tmp.st_size);
+    printf("sending file `%s`, size %d\n", argv[1], static_cast<int32_t>(tmp.st_size));
 
     UDPServer server{std::move(sock), inet_addr("192.168.1.2"), inet_addr("0.0.0.0"),
                      20000, 20000};

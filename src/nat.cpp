@@ -7,8 +7,10 @@
 using namespace cs120;
 
 int main() {
-    std::unique_ptr<BaseSocket> lan(new UnixSocket{64});
-    std::unique_ptr<BaseSocket> wan(new RawSocket{64});
+    uint32_t ip_addr = get_local_ip();
 
-    NatServer server{get_local_ip(), std::move(lan), std::move(wan)};
+    std::unique_ptr<BaseSocket> lan(new UnixSocket{64});
+    std::unique_ptr<BaseSocket> wan(new RawSocket{64, ip_addr});
+
+    NatServer server{ip_addr, std::move(lan), std::move(wan), {}};
 }

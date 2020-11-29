@@ -17,7 +17,7 @@ void *NatServer::nat_lan_to_wan(void *args_) {
     for (;;) {
         auto receive = args->lan->recv();
         auto *ip_header = receive->buffer_cast<struct ip>();
-        size_t ip_data_size = get_ipv4_data_size(*receive);
+        size_t ip_data_size = get_ipv4_total_size(*receive);
 
         uint32_t src_ip = ip_get_saddr(*ip_header).s_addr;
         uint32_t dest_ip = ip_get_daddr(*ip_header).s_addr;
@@ -46,7 +46,7 @@ void *NatServer::nat_lan_to_wan(void *args_) {
 
                 wan_port = lowest_free_port++;
 
-                printf("port mapping add: %s/%d <-> %d\n",
+                printf("port mapping add: %s:%d <-> %d\n",
                        inet_ntoa(in_addr{src_ip}), lan_port, wan_port);
 
                 size_t index = wan_port - NAT_PORTS_BASE;
@@ -75,7 +75,7 @@ void *NatServer::nat_wan_to_lan(void *args_) {
     for (;;) {
         auto receive = args->wan->recv();
         auto *ip_header = receive->buffer_cast<struct ip>();
-        size_t ip_data_size = get_ipv4_data_size(*receive);
+        size_t ip_data_size = get_ipv4_total_size(*receive);
 
         uint16_t wan_port = get_dest_port_from_ip_datagram(*receive);
 
@@ -106,10 +106,11 @@ void *NatServer::nat_wan_to_lan(void *args_) {
 }
 
 NatServer::NatServer(uint32_t addr, std::unique_ptr<BaseSocket> lan,
-                     std::unique_ptr<BaseSocket> wan) :
+                     std::unique_ptr<BaseSocket> wan,
+                     std::unordered_map<uint64_t, uint16_t> &&nat_reverse_table) :
         lan_to_wan{}, wan_to_lan{},
         lan{std::move(lan)}, wan{std::move(wan)},
-        nat_table{NAT_PORTS_SIZE}, nat_reverse_table{}, addr{addr} {
+        nat_table{NAT_PORTS_SIZE}, nat_reverse_table{std::move(nat_reverse_table)}, addr{addr} {
     pthread_create(&lan_to_wan, nullptr, nat_lan_to_wan, this);
     pthread_create(&wan_to_lan, nullptr, nat_wan_to_lan, this);
 }

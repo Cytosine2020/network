@@ -133,7 +133,8 @@ private:
     uint32_t addr;
 
 public:
-    NatServer(uint32_t addr, std::unique_ptr<BaseSocket> lan, std::unique_ptr<BaseSocket> wan);
+    NatServer(uint32_t addr, std::unique_ptr<BaseSocket> lan, std::unique_ptr<BaseSocket> wan,
+              std::unordered_map<uint64_t, uint16_t> &&nat_reverse_table);
 
     NatServer(NatServer &&other) = delete;
 

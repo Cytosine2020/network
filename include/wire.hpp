@@ -129,7 +129,7 @@ cs120_inline void udphdr_set_len(struct udphdr &header, uint16_t value) {
     header.uh_ulen = htons(value);
 }
 
-size_t get_ipv4_data_size(Slice<uint8_t> buffer);
+size_t get_ipv4_total_size(Slice<uint8_t> buffer);
 
 /// RFC 1071
 /// Calculates the Internet-checksum

@@ -14,7 +14,7 @@ void *unix_socket_sender(void *args_) {
     for (;;) {
         auto slot = args->queue->recv();
 
-        auto size = get_ipv4_data_size(*slot);
+        auto size = get_ipv4_total_size(*slot);
         if (size == 0) { cs120_abort("invalid package!"); }
         if (size >= ATHERNET_MTU) { cs120_abort("package truncated!"); }
 
