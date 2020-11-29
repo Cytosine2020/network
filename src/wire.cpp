@@ -66,12 +66,22 @@ void format(const struct ip &object) {
     printf("}\n");
 }
 
+void format(const icmp &object) {
+    printf("ICMP Header {\n");
+    printf("\ttype: %d,\n", object.get_type());
+    printf("\tcode: %d,\n", object.get_code());
+    printf("\tidentifier: %d,\n", object.get_ident());
+    printf("\tsequence: %d,\n", object.get_seq());
+//    printf("\tchecksum: %d,\n", udphdr_get_check(object));
+    printf("}\n");
+}
+
 void format(const udphdr &object) {
     printf("UDP Header {\n");
     printf("\tsource port: %d,\n", udphdr_get_source(object));
     printf("\tdestination port: %d,\n", udphdr_get_dest(object));
     printf("\tlength: %d,\n", udphdr_get_len(object));
-    printf("\tchecksum: %d,\n", udphdr_get_check(object));
+//    printf("\tchecksum: %d,\n", udphdr_get_check(object));
     printf("}\n");
 }
 
@@ -107,7 +117,7 @@ uint32_t get_local_ip() {
         case 0:
             dup2(pipe_fd[1], STDOUT_FILENO);
             if (execl("/sbin/ifconfig", "/sbin/ifconfig", device->name, nullptr) != 0) {
-                cs120_abort("ifconfig");
+                cs120_abort("failed to execute ifconfig");
             }
         default:;
     }
@@ -135,51 +145,78 @@ uint32_t get_local_ip() {
     return ip;
 }
 
-void generate_ip(MutSlice<uint8_t> frame, uint32_t src, uint32_t dest, size_t len) {
+void checksum_ip(MutSlice<uint8_t> frame) {
     auto *ip_header = frame.buffer_cast<struct ip>();
 
-    ip_header->ip_hl = 5;
+    ip_header->ip_sum = 0;
+    ip_header->ip_sum = composite_checksum(frame[Range{0, sizeof(struct ip)}]);
+}
+
+void generate_ip(MutSlice<uint8_t> frame, uint8_t protocol,
+                 uint32_t src_ip, uint32_t dest_ip, size_t len) {
+    auto *ip_header = frame.buffer_cast<struct ip>();
+
+    ip_header->ip_hl = sizeof(struct ip) / 4;
     ip_header->ip_v = 4;
     ip_header->ip_tos = 0;
     ip_header->ip_len = htons(sizeof(struct ip) + len);
     ip_header->ip_id = getpid();
     ip_header->ip_off = IP_DF;
     ip_header->ip_ttl = 64;
-    ip_header->ip_p = IPPROTO_ICMP;
-    ip_header->ip_sum = 0;
-    ip_header->ip_src.s_addr = src;
-    ip_header->ip_dst.s_addr = dest;
-    ip_header->ip_sum = 0;
-    ip_header->ip_sum = composite_checksum(frame[Range{0, sizeof(struct ip)}]);
+    ip_header->ip_p = protocol;
+    ip_header->ip_src.s_addr = src_ip;
+    ip_header->ip_dst.s_addr = dest_ip;
+
+    checksum_ip(frame);
 }
 
-void generate_icmp_request(MutSlice<uint8_t> frame, uint32_t src, uint32_t dest,
-                           uint16_t seq, Slice<uint8_t> data) {
+void checksum_icmp(MutSlice<uint8_t> frame, size_t icmp_size) {
+    auto *icmp_header = frame.buffer_cast<struct icmp>();
+
+    icmp_header->set_sum(0);
+    icmp_header->set_sum(composite_checksum(frame[Range{0, icmp_size}]));
+}
+
+void generate_icmp(MutSlice<uint8_t> frame, uint32_t src_ip, uint32_t dest_ip,
+                   uint8_t type, uint16_t ident, uint16_t seq, Slice<uint8_t> data) {
     size_t icmp_size = sizeof(struct icmp) + data.size();
 
-    generate_ip(frame, src, dest, icmp_size);
+    generate_ip(frame, IPPROTO_ICMP, src_ip, dest_ip, icmp_size);
 
     auto icmp_frame = frame[Range{sizeof(struct ip)}];
     auto *icmp_header = icmp_frame.buffer_cast<struct icmp>();
 
-    icmp_header->code = 0;
-    icmp_header->seq = seq;
-    icmp_header->ident = getpid();
-    icmp_header->type = 8;
-    icmp_header->sum = 0;
+    icmp_header->set_type(type);
+    icmp_header->set_code(0);
+    icmp_header->set_ident(ident);
+    icmp_header->set_seq(seq);
 
     icmp_frame[Range{sizeof(struct icmp)}][Range{0, data.size()}].copy_from_slice(data);
-    icmp_header->sum = composite_checksum(icmp_frame[Range{0, icmp_size}]);
+
+    checksum_icmp(icmp_frame, icmp_size);
 }
 
-// todo
-void generate_icmp_reply(MutSlice<uint8_t> frame, uint16_t seq, Slice<uint8_t> data) {
-    frame[Range{0, data.size()}].shallow_copy_from_slice(data);
-    auto *icmp_header = frame.buffer_cast<struct icmp>();
+void checksum_udp(MutSlice<uint8_t> frame) {
+    auto *icmp_header = frame.buffer_cast<struct udphdr>();
 
-    icmp_header->type = 0;
-    icmp_header->seq = seq;
-    icmp_header->sum = 0;
-    icmp_header->sum = composite_checksum(frame[Range{0, data.size()}]);
+    icmp_header->uh_sum = 0;
+}
+
+void generate_udp(MutSlice<uint8_t> frame, uint32_t src_ip, uint32_t dest_ip,
+                  uint16_t src_port, uint16_t dest_port, Slice<uint8_t> data) {
+    size_t udp_size = sizeof(struct udphdr) + data.size();
+
+    generate_ip(frame, IPPROTO_UDP, src_ip, dest_ip, udp_size);
+
+    auto udp_frame = frame[Range{sizeof(struct ip)}];
+    auto *udp_header = udp_frame.buffer_cast<struct udphdr>();
+
+    udphdr_set_source(*udp_header, src_port);
+    udphdr_set_dest(*udp_header, dest_port);
+    udphdr_set_len(*udp_header, data.size());
+
+    udp_frame[Range{sizeof(struct udphdr)}][Range{0, data.size()}].copy_from_slice(data);
+
+    checksum_udp(udp_frame);
 }
 }

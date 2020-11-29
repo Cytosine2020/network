@@ -1,21 +1,25 @@
-#include <sys/time.h>
-
 #include "server/icmp_server.hpp"
+
+#include <sys/time.h>
 
 #include "wire.hpp"
 
 
 namespace cs120 {
-void icmp_ping(std::unique_ptr<BaseSocket> sock, uint32_t dest) {
-    uint32_t src = get_local_ip();
+void icmp_ping(std::unique_ptr<BaseSocket> sock, uint32_t src_ip, uint32_t dest_ip,
+               uint16_t src_port) {
+    if (icmp_max_payload(sock->get_mtu()) < sizeof(struct timeval)) {
+        cs120_abort("mtu too small!");
+    }
 
     for (int i = 0; i < 10; i++) {
+        struct timeval time{};
+        gettimeofday(&time, nullptr);
+        Slice<uint8_t> data{reinterpret_cast<uint8_t *>(&time), sizeof(struct timeval)};
+
         {
             auto buffer = sock->send();
-            Array<uint8_t> times = Array<uint8_t>(sizeof(struct timeval));
-            auto *start = times.buffer_cast<struct timeval>();
-            gettimeofday(start, nullptr);
-            generate_icmp_request(*buffer, src, dest, i, times);
+            generate_icmp(*buffer, src_ip, dest_ip, 8, src_port, i, data);
         }
 
         for (;;) {
@@ -25,11 +29,13 @@ void icmp_ping(std::unique_ptr<BaseSocket> sock, uint32_t dest) {
 
             auto ip_datagram = (*buffer)[Range{0, ip_get_tot_len(*ip_header)}];
 
-            if (ip_get_protocol(*ip_header) != 1) { continue; }
+            if (ip_get_version(*ip_header) != 4 ||
+                ip_get_protocol(*ip_header) != 1) { continue; }
 
             auto ip_data = ip_datagram[Range{static_cast<size_t>(ip_get_ihl(*ip_header))}];
-            auto *icmp = ip_data.buffer_cast<struct icmp>();
-            if (icmp->type != 0) { continue; }
+            auto *icmp_header = ip_data.buffer_cast<struct icmp>();
+
+            if (icmp_header->get_type() != 0) { continue; }
 
             struct timeval tv1{};
             gettimeofday(&tv1, nullptr);
@@ -37,6 +43,7 @@ void icmp_ping(std::unique_ptr<BaseSocket> sock, uint32_t dest) {
             auto udp_data = ip_data[Range{sizeof(struct icmp)}].buffer_cast<struct timeval>();
 
             format(*ip_header);
+//            format(*icmp_header);
 
             uint32_t interval = (tv1.tv_usec - udp_data->tv_usec) / 1000 +
                                 (tv1.tv_sec - udp_data->tv_sec) * 1000;

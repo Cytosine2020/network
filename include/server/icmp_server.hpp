@@ -10,7 +10,8 @@
 
 
 namespace cs120 {
-void icmp_ping(std::unique_ptr<BaseSocket> sock, uint32_t dest);
+void icmp_ping(std::unique_ptr<BaseSocket> sock, uint32_t src_ip, uint32_t dest_ip,
+               uint16_t src_port);
 }
 
 

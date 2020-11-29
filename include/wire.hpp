@@ -23,11 +23,33 @@ struct ethhdr {
 #endif
 
 struct icmp {
+private:
     uint8_t type;
     uint8_t code;
     uint16_t sum;
     uint16_t ident;
     uint16_t seq;
+
+public:
+    uint8_t get_type() const { return type; }
+
+    void set_type(uint8_t value) { type = value; }
+
+    uint8_t get_code() const { return code; }
+
+    void set_code(uint8_t value) { code = value; }
+
+    uint16_t get_sum() const { return sum; }
+
+    void set_sum(uint16_t value) { sum = value; }
+
+    uint16_t get_ident() const { return ntohs(ident); }
+
+    void set_ident(uint8_t value) { ident = htons(value); }
+
+    uint16_t get_seq() const { return ntohs(seq); }
+
+    void set_seq(uint8_t value) { seq = htons(value); }
 }__attribute__((packed));
 
 namespace cs120 {
@@ -87,16 +109,24 @@ cs120_inline uint16_t udphdr_get_source(const struct udphdr &header) {
     return ntohs(header.uh_sport);
 }
 
+cs120_inline void udphdr_set_source(struct udphdr &header, uint16_t value) {
+    header.uh_sport = htons(value);
+}
+
 cs120_inline uint16_t udphdr_get_dest(const struct udphdr &header) {
     return ntohs(header.uh_dport);
+}
+
+cs120_inline void udphdr_set_dest(struct udphdr &header, uint16_t value) {
+    header.uh_dport = htons(value);
 }
 
 cs120_inline uint16_t udphdr_get_len(const struct udphdr &header) {
     return ntohs(header.uh_ulen);
 }
 
-cs120_inline uint16_t udphdr_get_check(const struct udphdr &header) {
-    return ntohs(header.uh_sum);
+cs120_inline void udphdr_set_len(struct udphdr &header, uint16_t value) {
+    header.uh_ulen = htons(value);
 }
 
 size_t get_ipv4_data_size(Slice<uint8_t> buffer);
@@ -115,18 +145,38 @@ void format(const struct ethhdr &object);
 
 void format(const struct ip &object);
 
+void format(const struct ethhdr &object);
+
 void format(const struct udphdr &object);
 
 void format(const Slice<uint8_t> &object);
 
 uint32_t get_local_ip();
 
-void generate_ip(MutSlice<uint8_t> frame, uint32_t src, uint32_t dest, size_t len);
+cs120_inline size_t ip_max_payload(size_t mtu) { return (mtu - sizeof(struct ip)) / 8 * 8; }
 
-void generate_icmp_request(MutSlice<uint8_t> frame, uint32_t src, uint32_t dest,
-                           uint16_t seq, Slice<uint8_t> data);
+void checksum_ip(MutSlice<uint8_t> frame);
 
-void generate_icmp_reply(MutSlice<uint8_t> frame, uint16_t seq, Slice<uint8_t> data);
+void generate_ip(MutSlice<uint8_t> frame, uint8_t protocol,
+                 uint32_t src_ip, uint32_t dest_ip, size_t len);
+
+cs120_inline size_t icmp_max_payload(size_t mtu) {
+    return ip_max_payload(mtu) - sizeof(icmp);
+}
+
+void checksum_icmp(MutSlice<uint8_t> frame, size_t icmp_size);
+
+void generate_icmp(MutSlice<uint8_t> frame, uint32_t src_ip, uint32_t dest_ip,
+                   uint8_t type, uint16_t ident, uint16_t seq, Slice<uint8_t> data);
+
+cs120_inline size_t udp_max_payload(size_t mtu) {
+    return ip_max_payload(mtu) - sizeof(struct udphdr);
+}
+
+void checksum_udp(MutSlice<uint8_t> frame);
+
+void generate_udp(MutSlice<uint8_t> frame, uint32_t src_ip, uint32_t dest_ip,
+                  uint16_t src_port, uint16_t dest_port, Slice<uint8_t> data);
 }
 
 

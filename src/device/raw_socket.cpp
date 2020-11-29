@@ -54,7 +54,7 @@ void *raw_socket_sender(void *args_) {
 
     for (;;) {
         char err_buf[LIBNET_ERRBUF_SIZE];
-        libnet_t * context = libnet_init(LIBNET_RAW4, nullptr, err_buf);
+        libnet_t *context = libnet_init(LIBNET_RAW4, nullptr, err_buf);
         if (context == nullptr) { cs120_abort(err_buf); }
 
         auto buffer = queue->recv();
@@ -65,8 +65,8 @@ void *raw_socket_sender(void *args_) {
         auto *icmp_header = icmp_datagram.buffer_cast<struct icmp>();
         auto payload = icmp_datagram[Range{sizeof(struct icmp)}];
 
-        if (libnet_build_icmpv4_echo(icmp_header->type, 0, 0, icmp_header->ident,
-                                     icmp_header->seq, payload.begin(),
+        if (libnet_build_icmpv4_echo(icmp_header->get_type(), 0, 0, icmp_header->get_ident(),
+                                     icmp_header->get_seq(), payload.begin(),
                                      sizeof(struct timeval), context, 0) == -1) {
             cs120_abort("Can't create IP header");
         }
@@ -87,20 +87,21 @@ void *raw_socket_sender(void *args_) {
 
 
 namespace cs120 {
-RawSocket::RawSocket(size_t buffer_size, size_t size) :
+RawSocket::RawSocket(size_t size) :
         receiver{}, sender{}, receive_queue{nullptr}, send_queue{nullptr} {
     char pcap_error[PCAP_ERRBUF_SIZE]{};
     pcap_if_t *device = nullptr;
 
     if (pcap_findalldevs(&device, pcap_error) == PCAP_ERROR) { cs120_abort(pcap_error); }
 
-    pcap_t *pcap_handle = pcap_open_live(device->name, buffer_size, 0, 1, pcap_error);
+    pcap_t *pcap_handle = pcap_open_live(device->name, static_cast<int32_t>(get_mtu() + 100u),
+                                         0, 1, pcap_error);
     if (pcap_handle == nullptr) { cs120_abort(pcap_error); }
 
     pcap_freealldevs(device);
 
-    receive_queue = new SPSCQueue{buffer_size, size};
-    send_queue = new SPSCQueue{buffer_size, size};
+    receive_queue = new SPSCQueue{get_mtu(), size};
+    send_queue = new SPSCQueue{get_mtu(), size};
 
     auto *args = new pcap_callback_args{
             .pcap_handle = pcap_handle,

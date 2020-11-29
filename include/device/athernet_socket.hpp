@@ -1,5 +1,5 @@
-#ifndef CS120_UNIX_SOCKET_HPP
-#define CS120_UNIX_SOCKET_HPP
+#ifndef CS120_ATHERNET_SOCKET_HPP
+#define CS120_ATHERNET_SOCKET_HPP
 
 
 #include <unistd.h>
@@ -11,18 +11,19 @@
 
 
 namespace cs120 {
-class UnixSocket : public BaseSocket {
+/// this socket if for mimicking athernet device through unix socket
+class AthernetSocket : public BaseSocket {
 private:
     pthread_t receiver, sender;
     SPSCQueue *receive_queue, *send_queue;
     int athernet;
 
 public:
-    UnixSocket(size_t size);
+    AthernetSocket(size_t size);
 
-    UnixSocket(UnixSocket &&other) noexcept = default;
+    AthernetSocket(AthernetSocket &&other) noexcept = default;
 
-    UnixSocket &operator=(UnixSocket &&other) noexcept = default;
+    AthernetSocket &operator=(AthernetSocket &&other) noexcept = default;
 
     size_t get_mtu() final { return ATHERNET_MTU - 1; }
 
@@ -34,11 +35,11 @@ public:
 
     SPSCQueueReceiverSlotGuard recv() final { return receive_queue->recv(); }
 
-    ~UnixSocket() override {
+    ~AthernetSocket() override {
         if (athernet != -1) { close(athernet); }
     }
 };
 }
 
 
-#endif //CS120_UNIX_SOCKET_HPP
+#endif //CS120_ATHERNET_SOCKET_HPP

@@ -8,6 +8,8 @@
 namespace cs120 {
 class BaseSocket {
 public:
+    virtual size_t get_mtu() = 0;
+
     virtual SPSCQueueSenderSlotGuard try_send() = 0;
 
     virtual SPSCQueueSenderSlotGuard send() = 0;

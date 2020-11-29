@@ -19,11 +19,13 @@ private:
     SPSCQueue *receive_queue, *send_queue;
 
 public:
-    RawSocket(size_t buffer_size, size_t size);
+    RawSocket(size_t size);
 
     RawSocket(RawSocket &&other) noexcept = default;
 
     RawSocket &operator=(RawSocket &&other) noexcept = default;
+
+    size_t get_mtu() final { return 1500; }
 
     SPSCQueueSenderSlotGuard try_send() final { return send_queue->try_send(); }
 
