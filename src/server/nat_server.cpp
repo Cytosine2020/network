@@ -23,6 +23,7 @@ void *NatServer::nat_lan_to_wan(void *args_) {
         uint32_t dest_ip = ip_get_daddr(*ip_header).s_addr;
 
         // drop if send to subnet
+        if (src_ip == args->addr) { continue; }
         if ((dest_ip & sub_net_mask) == sub_net_addr) { continue; }
 
         auto send = args->wan->try_send();

@@ -10,8 +10,14 @@ class UDPServer {
 private:
     std::unique_ptr<BaseSocket> device;
 
+    uint32_t src_ip, dest_ip;
+    uint16_t src_port, dest_port;
+
 public:
-    UDPServer(std::unique_ptr<BaseSocket> device) : device{std::move(device)} {}
+    UDPServer(std::unique_ptr<BaseSocket> device, uint32_t src_ip, uint32_t dest_ip,
+              uint16_t src_port, uint16_t dest_port) :
+            device{std::move(device)}, src_ip{src_ip}, dest_ip{dest_ip},
+            src_port{src_port}, dest_port{dest_port} {}
 
     UDPServer(UDPServer &&other) noexcept = default;
 

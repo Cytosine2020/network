@@ -109,13 +109,12 @@ RawSocket::RawSocket(size_t size) :
             .queue = receive_queue,
     };
 
-    struct in_addr ip_addr;
-    ip_addr.s_addr=get_local_ip();
-    char *my_ip=inet_ntoa(ip_addr);
+    struct in_addr ip_addr{};
+    ip_addr.s_addr = get_local_ip();
+    char *my_ip = inet_ntoa(ip_addr);
 
-    char expr[100];
-    snprintf(expr,100,"(icmp or udp) and (dst host %s)",my_ip);
-    printf(expr);
+    char expr[100]{};
+    snprintf(expr, 100, "(icmp or udp) and (dst host %s)", my_ip);
 
     if (pcap_compile(pcap_handle, &args->filter, expr, 0, PCAP_NETMASK_UNKNOWN) == PCAP_ERROR) {
         cs120_abort(pcap_geterr(pcap_handle));
