@@ -44,16 +44,12 @@ private:
         auto ip_data = datagram[Range{ip_get_ihl(*ip_header), ip_get_tot_len(*ip_header)}];
 
         switch (ip_get_protocol(*ip_header)) {
-            case 1:
-            {
-                auto *icmp_header=ip_data.buffer_cast<struct icmp>();
-                if (icmp_header== nullptr){
-                    return 0;
-                }
-                return ntohs(icmp_header->get_ident());
+            case 1: {
+                auto *icmp_header = ip_data.buffer_cast<struct icmp>();
+                if (icmp_header == nullptr) { return 0; }
+                return icmp_header->get_ident();
             }
-            case 17:
-            {
+            case 17: {
                 auto *udp_header = ip_data.buffer_cast<struct udphdr>();
                 if (udp_header == nullptr) { return 0; }
                 return udphdr_get_source(*udp_header);
@@ -63,25 +59,23 @@ private:
         }
     }
 
-    // todo: modify checksum
     static void set_src_port_from_ip_datagram(MutSlice<uint8_t> datagram, uint16_t port) {
         auto *ip_header = datagram.buffer_cast<struct ip>();
         auto ip_data = datagram[Range{ip_get_ihl(*ip_header), ip_get_tot_len(*ip_header)}];
+        size_t ip_data_size = ip_get_tot_len(*ip_header) - ip_get_ihl(*ip_header);
 
         switch (ip_get_protocol(*ip_header)) {
-            case 1:
-            {
+            case 1: {
                 auto *icmp_header = ip_data.buffer_cast<struct icmp>();
-
                 if (icmp_header == nullptr) { return; }
-
+                checksum_icmp(ip_data, ip_data_size);
                 icmp_header->set_ident(port);
                 return;
             }
-            case 17:
-            {
+            case 17: {
                 auto *udp_header = ip_data.buffer_cast<struct udphdr>();
                 if (udp_header == nullptr) { return; }
+                checksum_udp(ip_data);
                 return;
             }
             default:
@@ -94,10 +88,12 @@ private:
         auto ip_data = datagram[Range{ip_get_ihl(*ip_header), ip_get_tot_len(*ip_header)}];
 
         switch (ip_get_protocol(*ip_header)) {
-            case 1:
-                return 0;
-            case 17:
-            {
+            case 1: {
+                auto *icmp_header = ip_data.buffer_cast<struct icmp>();
+                if (icmp_header == nullptr) { return 0; }
+                return icmp_header->get_ident();
+            }
+            case 17: {
                 auto *udp_header = ip_data.buffer_cast<struct udphdr>();
                 if (udp_header == nullptr) { return 0; }
                 return udphdr_get_dest(*udp_header);
@@ -107,16 +103,20 @@ private:
         }
     }
 
-    // todo: modify checksum
     static void set_dest_port_from_ip_datagram(MutSlice<uint8_t> datagram, uint16_t port) {
         auto *ip_header = datagram.buffer_cast<struct ip>();
         auto ip_data = datagram[Range{ip_get_ihl(*ip_header), ip_get_tot_len(*ip_header)}];
+        size_t ip_data_size = ip_get_tot_len(*ip_header) - ip_get_ihl(*ip_header);
 
         switch (ip_get_protocol(*ip_header)) {
-            case 1:
+            case 1: {
+                auto *icmp_header = ip_data.buffer_cast<struct icmp>();
+                if (icmp_header == nullptr) { return; }
+                icmp_header->set_ident(port);
+                checksum_icmp(ip_data, ip_data_size);
                 return;
-            case 17:
-            {
+            }
+            case 17: {
                 auto *udp_header = ip_data.buffer_cast<struct udphdr>();
                 if (udp_header == nullptr) { return; }
                 return;
