@@ -2,11 +2,12 @@
 #define CS120_WIRE_HPP
 
 
-#include "utility.hpp"
-
+#include <sys/wait.h>
 #include <arpa/inet.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
+
+#include "utility.hpp"
 
 
 #if defined(__linux__)
@@ -110,6 +111,8 @@ void format(const struct ip &object);
 void format(const struct udphdr &object);
 
 void format(const Slice<uint8_t> &object);
+
+uint32_t get_local_ip();
 }
 
 
