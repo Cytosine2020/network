@@ -113,8 +113,6 @@ RawSocket::RawSocket(size_t size) :
     ip_addr.s_addr=get_local_ip();
     char *my_ip=inet_ntoa(ip_addr);
 
-
-
     char expr[100];
     snprintf(expr,100,"(icmp or udp) and (dst host %s)",my_ip);
     printf(expr);

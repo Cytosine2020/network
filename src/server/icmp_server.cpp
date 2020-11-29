@@ -26,7 +26,6 @@ void icmp_ping(std::unique_ptr<BaseSocket> sock, uint32_t src_ip, uint32_t dest_
             auto buffer = sock->recv();
 
             auto *ip_header = buffer->buffer_cast<struct ip>();
-
             auto ip_datagram = (*buffer)[Range{0, ip_get_tot_len(*ip_header)}];
 
             if (ip_get_version(*ip_header) != 4 ||

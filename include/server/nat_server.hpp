@@ -68,8 +68,8 @@ private:
             case 1: {
                 auto *icmp_header = ip_data.buffer_cast<struct icmp>();
                 if (icmp_header == nullptr) { return; }
-                checksum_icmp(ip_data, ip_data_size);
                 icmp_header->set_ident(port);
+                checksum_icmp(ip_data, ip_data_size);
                 return;
             }
             case 17: {
