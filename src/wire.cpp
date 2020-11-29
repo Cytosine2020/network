@@ -134,4 +134,52 @@ uint32_t get_local_ip() {
 
     return ip;
 }
+
+void generate_ip(MutSlice<uint8_t> frame, uint32_t src, uint32_t dest, size_t len) {
+    auto *ip_header = frame.buffer_cast<struct ip>();
+
+    ip_header->ip_hl = 5;
+    ip_header->ip_v = 4;
+    ip_header->ip_tos = 0;
+    ip_header->ip_len = htons(sizeof(struct ip) + len);
+    ip_header->ip_id = getpid();
+    ip_header->ip_off = IP_DF;
+    ip_header->ip_ttl = 64;
+    ip_header->ip_p = IPPROTO_ICMP;
+    ip_header->ip_sum = 0;
+    ip_header->ip_src.s_addr = src;
+    ip_header->ip_dst.s_addr = dest;
+    ip_header->ip_sum = 0;
+    ip_header->ip_sum = composite_checksum(frame[Range{0, sizeof(struct ip)}]);
+}
+
+void generate_icmp_request(MutSlice<uint8_t> frame, uint32_t src, uint32_t dest,
+                           uint16_t seq, Slice<uint8_t> data) {
+    size_t icmp_size = sizeof(struct icmp) + data.size();
+
+    generate_ip(frame, src, dest, icmp_size);
+
+    auto icmp_frame = frame[Range{sizeof(struct ip)}];
+    auto *icmp_header = icmp_frame.buffer_cast<struct icmp>();
+
+    icmp_header->code = 0;
+    icmp_header->seq = seq;
+    icmp_header->ident = getpid();
+    icmp_header->type = 8;
+    icmp_header->sum = 0;
+
+    icmp_frame[Range{sizeof(struct icmp)}][Range{0, data.size()}].copy_from_slice(data);
+    icmp_header->sum = composite_checksum(icmp_frame[Range{0, icmp_size}]);
+}
+
+// todo
+void generate_icmp_reply(MutSlice<uint8_t> frame, uint16_t seq, Slice<uint8_t> data) {
+    frame[Range{0, data.size()}].shallow_copy_from_slice(data);
+    auto *icmp_header = frame.buffer_cast<struct icmp>();
+
+    icmp_header->type = 0;
+    icmp_header->seq = seq;
+    icmp_header->sum = 0;
+    icmp_header->sum = composite_checksum(frame[Range{0, data.size()}]);
+}
 }

@@ -5,7 +5,7 @@
 
 using namespace cs120;
 
-static constexpr size_t SOCKET_BUFFER_SIZE = 2048;
+static constexpr size_t SOCKET_BUFFER_SIZE = 256;
 
 int main() {
     std::unique_ptr<BaseSocket> sock(new UnixSocket{SOCKET_BUFFER_SIZE, 64});

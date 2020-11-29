@@ -3,6 +3,8 @@
 #include <sys/un.h>
 #include <sys/socket.h>
 
+#include "wire.hpp"
+
 
 const char *ATHERNET_SOCKET = "/tmp/athernet.socket";
 const size_t ATHERNET_MTU = 256;
@@ -17,19 +19,31 @@ struct unix_socket_args {
 };
 
 void *unix_socket_sender(void *args_) {
+    uint8_t buffer[ATHERNET_MTU]{};
+
     for (;;) {
         auto *args = static_cast<unix_socket_args *>(args_);
 
         auto slot = args->queue->recv();
 
-        ssize_t size = send(args->athernet, slot->begin(), ATHERNET_MTU, 0);
-        if (size != ATHERNET_MTU) { cs120_abort("send error"); }
-    }
+        auto size = get_ipv4_data_size(*slot);
 
-    return nullptr;
+        if (size == 0) { cs120_abort("invalid package!"); }
+        if (size >= ATHERNET_MTU) { cs120_abort("package truncated!"); }
+
+        buffer[0] = static_cast<uint8_t>(size);
+        MutSlice<uint8_t>{buffer, ATHERNET_MTU}[Range{1}][Range{0, size}]
+                .copy_from_slice((*slot)[Range{0, size}]);
+
+        if (send(args->athernet, buffer, ATHERNET_MTU, 0) != ATHERNET_MTU) {
+            cs120_abort("send error");
+        }
+    }
 }
 
 void *unix_socket_receiver(void *args_) {
+    uint8_t buffer[ATHERNET_MTU]{};
+
     for (;;) {
         auto *args = static_cast<unix_socket_args *>(args_);
 
@@ -38,12 +52,17 @@ void *unix_socket_receiver(void *args_) {
         if (slot->empty()) {
             cs120_warn("package loss!");
         } else {
-            ssize_t size = recv(args->athernet, slot->begin(), slot->size(), 0);
-            if (size != ATHERNET_MTU) { cs120_abort("recv error"); }
+            if (recv(args->athernet, buffer, ATHERNET_MTU, 0) != ATHERNET_MTU) {
+                cs120_abort("recv error");
+            }
+
+            size_t size = buffer[0];
+
+            (*slot)[Range{0, size}].copy_from_slice(
+                    MutSlice<uint8_t>{buffer, ATHERNET_MTU}[Range{1}][Range{0, size}]
+            );
         }
     }
-
-    return nullptr;
 }
 }
 
@@ -67,17 +86,17 @@ UnixSocket::UnixSocket(size_t buffer_size, size_t size) :
 
     if (unlink(ATHERNET_SOCKET) != 0) { cs120_abort("unlink error"); }
 
-    unix_socket_args receiver_args {
-        .athernet = athernet,
-        .queue = receive_queue,
+    unix_socket_args *receiver_args = new unix_socket_args{
+            .athernet = athernet,
+            .queue = receive_queue,
     };
 
-    unix_socket_args sender_args {
+    unix_socket_args *sender_args = new unix_socket_args{
             .athernet = athernet,
             .queue = send_queue,
     };
 
-    pthread_create(&receiver, nullptr, unix_socket_receiver, &receiver_args);
-    pthread_create(&sender, nullptr, unix_socket_sender, &sender_args);
+    pthread_create(&receiver, nullptr, unix_socket_receiver, receiver_args);
+    pthread_create(&sender, nullptr, unix_socket_sender, sender_args);
 }
 }

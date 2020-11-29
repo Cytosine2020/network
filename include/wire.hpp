@@ -22,6 +22,13 @@ struct ethhdr {
 }__attribute__((packed));
 #endif
 
+struct icmp {
+    uint8_t type;
+    uint8_t code;
+    uint16_t sum;
+    uint16_t ident;
+    uint16_t seq;
+}__attribute__((packed));
 
 namespace cs120 {
 cs120_inline uint32_t ip_get_version(const struct ip &header) {
@@ -113,6 +120,13 @@ void format(const struct udphdr &object);
 void format(const Slice<uint8_t> &object);
 
 uint32_t get_local_ip();
+
+void generate_ip(MutSlice<uint8_t> frame, uint32_t src, uint32_t dest, size_t len);
+
+void generate_icmp_request(MutSlice<uint8_t> frame, uint32_t src, uint32_t dest,
+                           uint16_t seq, Slice<uint8_t> data);
+
+void generate_icmp_reply(MutSlice<uint8_t> frame, uint16_t seq, Slice<uint8_t> data);
 }
 
 

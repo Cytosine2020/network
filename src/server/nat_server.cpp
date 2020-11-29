@@ -45,8 +45,6 @@ void *NatServer::nat_lan_to_wan(void *args_) {
             // todo: modify checksum
         }
     }
-
-    return nullptr;
 }
 
 void *NatServer::nat_wan_to_lan(void *args_) {
@@ -77,8 +75,6 @@ void *NatServer::nat_wan_to_lan(void *args_) {
             }
         }
     }
-
-    return nullptr;
 }
 
 NatServer::NatServer(std::unique_ptr<BaseSocket> lan, std::unique_ptr<BaseSocket> wan) :
