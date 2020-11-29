@@ -2,7 +2,6 @@
 #define CS120_RAW_SOCKET_HPP
 
 #include "pthread.h"
-
 #include "libnet.h"
 #include "pcap/pcap.h"
 
@@ -10,6 +9,7 @@
 #include "wire.hpp"
 #include "queue.hpp"
 #include "mod.hpp"
+
 
 
 namespace cs120 {
