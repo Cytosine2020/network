@@ -21,6 +21,7 @@ struct ethhdr {
     unsigned short h_proto;
 }__attribute__((packed));
 #endif
+
 struct icmp {
     uint8_t type;
     uint8_t code;

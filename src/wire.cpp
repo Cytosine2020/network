@@ -25,6 +25,7 @@ uint16_t composite_checksum(Slice<uint8_t> buffer_) {
     uint32_t sum = 0;
 
     for (auto &item: buffer) { sum += item; }
+
     return static_cast<uint16_t>(~((sum & 0xffffu) + (sum >> 16u)));
 }
 

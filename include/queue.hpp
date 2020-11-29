@@ -78,9 +78,9 @@ public:
 
     SPSCQueue &operator=(const SPSCQueue &other) = delete;
 
-    SPSCQueueSenderSlotGuard send();
-
     SPSCQueueSenderSlotGuard try_send();
+
+    SPSCQueueSenderSlotGuard send();
 
     void commit();
 
