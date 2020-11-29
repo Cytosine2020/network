@@ -17,15 +17,18 @@ void *NatServer::nat_lan_to_wan(void *args_) {
     for (;;) {
         auto receive = args->lan->recv();
         auto *ip_header = receive->buffer_cast<struct ip>();
+        size_t ip_data_size = get_ipv4_data_size(*receive);
+
         uint32_t src_ip = ip_get_saddr(*ip_header).s_addr;
+        uint32_t dest_ip = ip_get_daddr(*ip_header).s_addr;
 
         // drop if send to subnet
-        if ((src_ip & sub_net_mask) == sub_net_addr) { continue; }
+        if ((dest_ip & sub_net_mask) == sub_net_addr) { continue; }
 
         auto send = args->wan->try_send();
         if (send->empty()) {
             cs120_warn("package loss!");
-        } else if (get_ipv4_data_size(*receive) > wan_mtu) {
+        } else if (ip_data_size > wan_mtu) {
             cs120_warn("package truncated!");
         } else {
             uint16_t lan_port = get_src_port_from_ip_datagram(*receive);
@@ -45,7 +48,9 @@ void *NatServer::nat_lan_to_wan(void *args_) {
                 printf("port mapping add: %s/%d <-> %d\n",
                        inet_ntoa(in_addr{src_ip}), lan_port, wan_port);
 
-                args->nat_table[wan_port].store(value, std::memory_order_seq_cst);
+                size_t index = wan_port - NAT_PORTS_BASE;
+
+                args->nat_table[index].store(value, std::memory_order_seq_cst);
                 args->nat_reverse_table.emplace(value, wan_port);
             } else {
                 wan_port = table_ptr->second;
@@ -56,7 +61,7 @@ void *NatServer::nat_lan_to_wan(void *args_) {
 
             set_src_port_from_ip_datagram(*receive, wan_port);
 
-            (*send)[Range{0, receive->size()}].copy_from_slice(*receive);
+            (*send)[Range{0, ip_data_size}].copy_from_slice((*receive)[Range{0, ip_data_size}]);
         }
     }
 }
@@ -69,17 +74,21 @@ void *NatServer::nat_wan_to_lan(void *args_) {
     for (;;) {
         auto receive = args->wan->recv();
         auto *ip_header = receive->buffer_cast<struct ip>();
+        size_t ip_data_size = get_ipv4_data_size(*receive);
 
         uint16_t wan_port = get_dest_port_from_ip_datagram(*receive);
 
-        auto value = args->nat_table[wan_port].load(std::memory_order_seq_cst);
+        size_t index = wan_port - NAT_PORTS_BASE;
+        if (index >= NAT_PORTS_SIZE) { continue; }
+
+        auto value = args->nat_table[index].load(std::memory_order_seq_cst);
 
         if (get_nat_table_extra(value) == 0) { continue; }
 
         auto send = args->lan->try_send();
         if (send->empty()) {
             cs120_warn("package loss!");
-        } else if (get_ipv4_data_size(*receive) > lan_mtu) {
+        } else if (ip_data_size > lan_mtu) {
             cs120_warn("package truncated!");
         } else {
             auto lan_ip = get_nat_table_ip(value);
@@ -90,7 +99,7 @@ void *NatServer::nat_wan_to_lan(void *args_) {
 
             set_dest_port_from_ip_datagram(*receive, lan_port);
 
-            (*send)[Range{0, receive->size()}].copy_from_slice(*receive);
+            (*send)[Range{0, ip_data_size}].copy_from_slice((*receive)[Range{0, ip_data_size}]);
         }
     }
 }
