@@ -27,7 +27,8 @@ target_link_libraries(fake-athernet pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 add_executable(nat-server
         src/nat.cpp src/wire.cpp src/queue.cpp src/athernet.cpp
         src/device/raw_socket.cpp src/device/unix_socket.cpp src/device/athernet_socket.cpp
-        src/server/nat_server.cpp src/server/udp_server.cpp src/server/icmp_server.cpp)
+        src/server/nat_server.cpp src/server/udp_server.cpp src/server/icmp_server.cpp
+        src/udp_data.cpp)
 target_link_libraries(nat-server pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
 if (APPLE)

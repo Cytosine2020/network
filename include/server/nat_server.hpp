@@ -75,7 +75,7 @@ private:
 
                 if (icmp_header == nullptr) { return; }
 
-                icmp_header->set_ident()
+                icmp_header->set_ident(port);
                 return;
             }
             case 17:
