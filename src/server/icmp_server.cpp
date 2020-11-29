@@ -26,24 +26,26 @@ void icmp_ping(std::unique_ptr<BaseSocket> sock, uint32_t src_ip, uint32_t dest_
             auto buffer = sock->recv();
 
             auto *ip_header = buffer->buffer_cast<struct ip>();
-
             auto ip_datagram = (*buffer)[Range{0, ip_get_tot_len(*ip_header)}];
 
             if (ip_get_version(*ip_header) != 4 ||
-                ip_get_protocol(*ip_header) != 1) { continue; }
+                ip_get_protocol(*ip_header) != 1 ||
+                ip_get_daddr(*ip_header).s_addr != src_ip) { continue; }
 
             auto ip_data = ip_datagram[Range{static_cast<size_t>(ip_get_ihl(*ip_header))}];
-            auto *icmp_header = ip_data.buffer_cast<struct icmp>();
+            auto *icmp_header = ip_data.buffer_cast<icmp>();
 
-            if (icmp_header->get_type() != 0) { continue; }
+            if (icmp_header->get_type() != 0 ||
+                icmp_header->get_code() != 0 ||
+                icmp_header->get_ident() != src_port) { continue; }
 
             struct timeval tv1{};
             gettimeofday(&tv1, nullptr);
 
-            auto udp_data = ip_data[Range{sizeof(struct icmp)}].buffer_cast<struct timeval>();
+            auto udp_data = ip_data[Range{sizeof(icmp)}].buffer_cast<struct timeval>();
 
             format(*ip_header);
-//            format(*icmp_header);
+            format(*icmp_header);
 
             uint32_t interval = (tv1.tv_usec - udp_data->tv_usec) / 1000 +
                                 (tv1.tv_sec - udp_data->tv_sec) * 1000;

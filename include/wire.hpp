@@ -45,11 +45,11 @@ public:
 
     uint16_t get_ident() const { return ntohs(ident); }
 
-    void set_ident(uint8_t value) { ident = htons(value); }
+    void set_ident(uint16_t value) { ident = htons(value); }
 
     uint16_t get_seq() const { return ntohs(seq); }
 
-    void set_seq(uint8_t value) { seq = htons(value); }
+    void set_seq(uint16_t value) { seq = htons(value); }
 }__attribute__((packed));
 
 namespace cs120 {
@@ -145,7 +145,7 @@ void format(const struct ethhdr &object);
 
 void format(const struct ip &object);
 
-void format(const struct ethhdr &object);
+void format(const struct icmp &object);
 
 void format(const struct udphdr &object);
 
