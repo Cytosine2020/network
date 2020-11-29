@@ -45,7 +45,13 @@ private:
 
         switch (ip_get_protocol(*ip_header)) {
             case 1:
-                return 0;
+            {
+                auto *icmp_header=ip_data.buffer_cast<struct icmp>();
+                if (icmp_header== nullptr){
+                    return 0;
+                }
+                return ntohs(icmp_header->get_ident());
+            }
             case 17:
             {
                 auto *udp_header = ip_data.buffer_cast<struct udphdr>();
@@ -64,7 +70,14 @@ private:
 
         switch (ip_get_protocol(*ip_header)) {
             case 1:
+            {
+                auto *icmp_header = ip_data.buffer_cast<struct icmp>();
+
+                if (icmp_header == nullptr) { return; }
+
+                icmp_header->set_ident()
                 return;
+            }
             case 17:
             {
                 auto *udp_header = ip_data.buffer_cast<struct udphdr>();
