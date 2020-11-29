@@ -30,7 +30,9 @@ int main() {
 //    }
 
     RawSocket raw_socket{SOCKET_BUFFER_SIZE, 64};
-
+    pthread_t recv;
+    struct receive_args arg{&raw_socket,getpid()};
+    pthread_create(&recv, nullptr,receive_data,(void *)&arg);
     send_data(&raw_socket);
 
 //    for (;;) {

@@ -17,7 +17,10 @@ namespace cs120 {
         uint8_t *data;
         size_t length;
     };
-
+    struct receive_args{
+        RawSocket * raw;
+        int pid;
+    };
 
     enum Icmp_request {
         REQUEST,
@@ -31,6 +34,7 @@ namespace cs120 {
     };
 
     int send_data(RawSocket *raw);
+    void *receive_data(void* args_);
     size_t generate_icmp(Icmp_request opt, MutSlice<uint8_t> frame, uint16_t seq, Slice<uint8_t> data);
     size_t generate_IP(uint32_t addr, uint16_t i,MutSlice<uint8_t> frame,Slice<uint8_t> data,Icmp_request opt);
 

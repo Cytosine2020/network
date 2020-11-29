@@ -2,10 +2,6 @@
 // Created by zhao on 2020/11/28.
 //
 
-
-#define MY_IP "192.168.1.2"
-#define MAX_ICMP_FRAME 500
-
 #include <string.h>
 #include <zconf.h>
 #include <libnet.h>
@@ -17,6 +13,9 @@
 
 namespace cs120 {
     int send_data(RawSocket *raw){
+//        printf("IP");
+//        char data[100];
+//        scanf("%s",data);
         uint32_t addr=inet_addr("182.61.200.7");
         for (int i=0;i<10;i++){
             {
@@ -26,16 +25,37 @@ namespace cs120 {
                 gettimeofday(start, nullptr);
                 generate_IP(addr,i,*buffer,times,REQUEST);
             }
-            {
-                auto buffer=raw->recv();
-                auto *ip_header = buffer->buffer_cast<struct ip>();
-
-                auto ip_datagram = (*buffer)[Range{0, ip_get_tot_len(*ip_header)}];
-
-            }
 
             sleep(1);
         }
+    }
+    void* receive_data(void *args_){
+        struct receive_args *args=(struct receive_args*)args_;
+        RawSocket *raw_socket=args->raw;
+        for (;;) {
+        auto buffer = raw_socket->recv();
+
+        auto *ip_header = buffer->buffer_cast<struct ip>();
+
+        auto ip_datagram = (*buffer)[Range{0, ip_get_tot_len(*ip_header)}];
+
+        if (ip_get_version(*ip_header) != 4u) { continue; }
+
+        if (ip_get_protocol(*ip_header) != 1) { continue; }
+
+
+
+        auto ip_data = ip_datagram[Range{static_cast<size_t>(ip_get_ihl(*ip_header))}];
+        auto *icmp = ip_data.buffer_cast<struct icmp>();
+        if (icmp->type != 0) { continue; }
+        struct timeval tv1;
+        gettimeofday(&tv1, nullptr);
+        auto udp_data = ip_data[Range{sizeof(struct icmp)}].buffer_cast<struct timeval>();
+        format(*ip_header);
+        printf("TTL %ld ms\n",(tv1.tv_usec-udp_data->tv_usec)/1000+(tv1.tv_sec-udp_data->tv_sec)*1000);
+    }
+
+
     }
 
 

@@ -30,6 +30,7 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
 
     auto slot = args->queue->try_send();
 
+
     if (slot->empty()) {
         cs120_warn("package loss!");
     } else {

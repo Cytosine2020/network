@@ -162,7 +162,6 @@ public:
         if (range.end() == 0) { range.end_ = sub_type()->size(); }
 
         if (range.begin() > range.end() || range.end() > sub_type()->size()) {
-            fprintf(stderr,"begin:%u end:%u size():%u ",range.begin(),range.end(),sub_type()->size());
             cs120_abort("index out of boundary!");
         }
 
