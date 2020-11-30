@@ -3,6 +3,7 @@
 
 
 #include <unistd.h>
+#include "pthread.h"
 
 #include "utility.hpp"
 #include "queue.hpp"
@@ -35,6 +36,8 @@ public:
     SPSCQueueReceiverSlotGuard recv() final { return receive_queue->recv(); }
 
     ~UnixSocket() override {
+        pthread_join(receiver, nullptr);
+        pthread_join(sender, nullptr);
         if (athernet != -1) { close(athernet); }
     }
 };

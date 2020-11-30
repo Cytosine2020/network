@@ -29,14 +29,24 @@ int main(int argc, char **argv) {
 
     std::unique_ptr<BaseSocket> sock(new UnixSocket{64});
 
-    printf("sending file `%s`, size %d, to %s:%d\n", argv[1], static_cast<int32_t>(tmp.st_size),
+    printf("sending file `%s`, size %d, to %s:%d\n", argv[2], static_cast<int32_t>(tmp.st_size),
            inet_ntoa(in_addr{dest_ip}), dest_port);
 
     UDPServer server{std::move(sock), inet_addr("192.168.1.2"), dest_ip, 20000, dest_port};
 
-    server.send(Slice<uint8_t>{buffer, static_cast<size_t>(tmp.st_size)});
+    Slice<uint8_t> data{buffer, static_cast<size_t>(tmp.st_size)};
 
-    sleep(1);
+    size_t i = 0, j = 0;
+    for (; i < data.size(); ++i) {
+        if (data[i] == '\n') {
+            server.send(data[Range{j, i}]);
+            j = i;
+        }
+    }
+
+    if (j < i) {
+        server.send(data[Range{j, i}]);
+    }
 
     munmap(buffer, tmp.st_size);
 }

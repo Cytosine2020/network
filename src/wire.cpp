@@ -225,7 +225,7 @@ void generate_udp(MutSlice<uint8_t> frame, uint16_t identifier, uint32_t src_ip,
 
     udphdr_set_source(*udp_header, src_port);
     udphdr_set_dest(*udp_header, dest_port);
-    udphdr_set_len(*udp_header, data.size());
+    udphdr_set_len(*udp_header, udp_size);
 
     udp_frame[Range{sizeof(struct udphdr)}][Range{0, data.size()}].copy_from_slice(data);
 

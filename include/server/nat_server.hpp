@@ -98,6 +98,8 @@ private:
             case 17: {
                 auto *udp_header = ip_data.buffer_cast<struct udphdr>();
                 if (udp_header == nullptr) { return; }
+                udphdr_set_dest(*udp_header, port);
+                checksum_udp(ip_data);
                 return;
             }
             default:

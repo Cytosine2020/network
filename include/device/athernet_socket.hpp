@@ -36,6 +36,8 @@ public:
     SPSCQueueReceiverSlotGuard recv() final { return receive_queue->recv(); }
 
     ~AthernetSocket() override {
+        pthread_join(receiver, nullptr);
+        pthread_join(sender, nullptr);
         if (athernet != -1) { close(athernet); }
     }
 };

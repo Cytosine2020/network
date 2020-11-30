@@ -17,9 +17,7 @@ void *NatServer::nat_lan_to_wan(void *args_) {
         auto *ip_header = receive->buffer_cast<struct ip>();
         size_t ip_data_size = get_ipv4_total_size(*receive);
 
-        if (ip_data_size > wan_mtu) {
-            cs120_warn("package truncated!");
-        }
+        format(*ip_header);
 
         uint32_t src_ip = ip_get_saddr(*ip_header).s_addr;
         uint32_t dest_ip = ip_get_daddr(*ip_header).s_addr;
@@ -27,6 +25,10 @@ void *NatServer::nat_lan_to_wan(void *args_) {
         // drop if send to subnet
         if (src_ip == args->ip_addr) { continue; }
         if ((dest_ip & sub_net_mask) == sub_net_addr) { continue; }
+
+        if (ip_data_size > wan_mtu) {
+            cs120_warn("package truncated!");
+        }
 
         auto send = args->wan->try_send();
         if (send->empty()) {

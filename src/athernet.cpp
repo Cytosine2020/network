@@ -16,8 +16,6 @@ void *unix_socket_sender(void *args_) {
 
         auto size = get_ipv4_total_size(*slot);
         if (size == 0) {
-            format(*slot);
-
             cs120_warn("invalid package!");
             continue;
         }
