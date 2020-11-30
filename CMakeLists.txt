@@ -21,7 +21,8 @@ target_link_libraries(icmp-ping pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
 add_executable(fake-athernet
         src/fake_athernet.cpp src/wire.cpp src/queue.cpp src/athernet.cpp
-        src/device/athernet_socket.cpp src/server/icmp_server.cpp)
+        src/device/athernet_socket.cpp src/server/icmp_server.cpp
+        src/udp_data.cpp)
 target_link_libraries(fake-athernet pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
 add_executable(udp-send

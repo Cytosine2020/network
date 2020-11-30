@@ -1,6 +1,7 @@
 #include "server/icmp_server.hpp"
 
 #include <sys/time.h>
+#include <zconf.h>
 
 #include "wire.hpp"
 
@@ -55,6 +56,7 @@ void icmp_ping(std::unique_ptr<BaseSocket> sock, uint32_t src_ip, uint32_t dest_
 
             break;
         }
+        sleep(1);
     }
 }
 }
