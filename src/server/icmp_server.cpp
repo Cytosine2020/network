@@ -20,7 +20,7 @@ void icmp_ping(std::unique_ptr<BaseSocket> sock, uint32_t src_ip, uint32_t dest_
 
         {
             auto buffer = sock->send();
-            generate_icmp(*buffer, src_ip, dest_ip, 8, src_port, i, data);
+            generate_icmp(*buffer, i, src_ip, dest_ip, 8, src_port, i, data);
         }
 
         for (;;) {

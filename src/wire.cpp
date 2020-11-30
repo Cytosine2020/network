@@ -132,7 +132,7 @@ uint32_t get_local_ip() {
 
     if (size < 0) { cs120_abort("read error"); }
 
-    const char *start = strstr(buffer, "inet") + sizeof("inet");
+    const char *start = strstr(buffer, "inet ") + sizeof("inet");
 
     uint32_t ip = inet_addr(start);
 
@@ -164,7 +164,7 @@ void checksum_ip(MutSlice<uint8_t> frame) {
     ip_header->ip_sum = composite_checksum(frame[Range{0, sizeof(struct ip)}]);
 }
 
-void generate_ip(MutSlice<uint8_t> frame, uint8_t protocol,
+void generate_ip(MutSlice<uint8_t> frame, uint16_t identifier, uint8_t protocol,
                  uint32_t src_ip, uint32_t dest_ip, size_t len) {
     auto *ip_header = frame.buffer_cast<struct ip>();
 
@@ -172,7 +172,7 @@ void generate_ip(MutSlice<uint8_t> frame, uint8_t protocol,
     ip_header->ip_v = 4;
     ip_header->ip_tos = 0;
     ip_header->ip_len = htons(sizeof(struct ip) + len);
-    ip_header->ip_id = getpid();
+    ip_header->ip_id = htons(identifier);
     ip_header->ip_off = IP_DF;
     ip_header->ip_ttl = 64;
     ip_header->ip_p = protocol;
@@ -189,11 +189,11 @@ void checksum_icmp(MutSlice<uint8_t> frame, size_t icmp_size) {
     icmp_header->set_sum(composite_checksum(frame[Range{0, icmp_size}]));
 }
 
-void generate_icmp(MutSlice<uint8_t> frame, uint32_t src_ip, uint32_t dest_ip,
+void generate_icmp(MutSlice<uint8_t> frame, uint16_t identifier, uint32_t src_ip, uint32_t dest_ip,
                    uint8_t type, uint16_t ident, uint16_t seq, Slice<uint8_t> data) {
     size_t icmp_size = sizeof(struct icmp) + data.size();
 
-    generate_ip(frame, IPPROTO_ICMP, src_ip, dest_ip, icmp_size);
+    generate_ip(frame, identifier, IPPROTO_ICMP, src_ip, dest_ip, icmp_size);
 
     auto icmp_frame = frame[Range{sizeof(struct ip)}];
     auto *icmp_header = icmp_frame.buffer_cast<struct icmp>();
@@ -214,11 +214,11 @@ void checksum_udp(MutSlice<uint8_t> frame) {
     icmp_header->uh_sum = 0;
 }
 
-void generate_udp(MutSlice<uint8_t> frame, uint32_t src_ip, uint32_t dest_ip,
+void generate_udp(MutSlice<uint8_t> frame, uint16_t identifier, uint32_t src_ip, uint32_t dest_ip,
                   uint16_t src_port, uint16_t dest_port, Slice<uint8_t> data) {
     size_t udp_size = sizeof(struct udphdr) + data.size();
 
-    generate_ip(frame, IPPROTO_UDP, src_ip, dest_ip, udp_size);
+    generate_ip(frame, identifier, IPPROTO_UDP, src_ip, dest_ip, udp_size);
 
     auto udp_frame = frame[Range{sizeof(struct ip)}];
     auto *udp_header = udp_frame.buffer_cast<struct udphdr>();

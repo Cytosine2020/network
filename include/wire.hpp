@@ -160,7 +160,7 @@ cs120_inline size_t ip_max_payload(size_t mtu) { return (mtu - sizeof(struct ip)
 
 void checksum_ip(MutSlice<uint8_t> frame);
 
-void generate_ip(MutSlice<uint8_t> frame, uint8_t protocol,
+void generate_ip(MutSlice<uint8_t> frame, uint16_t identifier, uint8_t protocol,
                  uint32_t src_ip, uint32_t dest_ip, size_t len);
 
 cs120_inline size_t icmp_max_payload(size_t mtu) {
@@ -169,7 +169,7 @@ cs120_inline size_t icmp_max_payload(size_t mtu) {
 
 void checksum_icmp(MutSlice<uint8_t> frame, size_t icmp_size);
 
-void generate_icmp(MutSlice<uint8_t> frame, uint32_t src_ip, uint32_t dest_ip,
+void generate_icmp(MutSlice<uint8_t> frame, uint16_t identifier, uint32_t src_ip, uint32_t dest_ip,
                    uint8_t type, uint16_t ident, uint16_t seq, Slice<uint8_t> data);
 
 cs120_inline size_t udp_max_payload(size_t mtu) {
@@ -178,7 +178,7 @@ cs120_inline size_t udp_max_payload(size_t mtu) {
 
 void checksum_udp(MutSlice<uint8_t> frame);
 
-void generate_udp(MutSlice<uint8_t> frame, uint32_t src_ip, uint32_t dest_ip,
+void generate_udp(MutSlice<uint8_t> frame, uint16_t identifier, uint32_t src_ip, uint32_t dest_ip,
                   uint16_t src_port, uint16_t dest_port, Slice<uint8_t> data);
 }
 

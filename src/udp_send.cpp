@@ -3,16 +3,18 @@
 #include <sys/stat.h>
 
 #include "wire.hpp"
-#include "device/athernet_socket.hpp"
+#include "device/unix_socket.hpp"
 #include "server/udp_server.hpp"
 
 
 using namespace cs120;
 
 int main(int argc, char **argv) {
-    if (argc != 2) { cs120_abort("accept 2 arguments"); }
+    if (argc != 3) { cs120_abort("accept 3 arguments"); }
 
-    int file = open(argv[1], O_RDONLY);
+    auto[dest_ip, dest_port] = parse_ip_address(argv[1]);
+
+    int file = open(argv[2], O_RDONLY);
     if (file < 0) { cs120_abort("open error"); }
 
     struct stat tmp{};
@@ -25,12 +27,12 @@ int main(int argc, char **argv) {
 
     close(file);
 
-    std::unique_ptr<BaseSocket> sock(new AthernetSocket{64});
+    std::unique_ptr<BaseSocket> sock(new UnixSocket{64});
 
-    printf("sending file `%s`, size %d\n", argv[1], static_cast<int32_t>(tmp.st_size));
+    printf("sending file `%s`, size %d, to %s:%d\n", argv[1], static_cast<int32_t>(tmp.st_size),
+           inet_ntoa(in_addr{dest_ip}), dest_port);
 
-    UDPServer server{std::move(sock), inet_addr("192.168.1.2"), inet_addr("0.0.0.0"),
-                     20000, 20000};
+    UDPServer server{std::move(sock), inet_addr("192.168.1.2"), dest_ip, 20000, dest_port};
 
     server.send(Slice<uint8_t>{buffer, static_cast<size_t>(tmp.st_size)});
 

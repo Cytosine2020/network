@@ -14,9 +14,12 @@ size_t UDPServer::send(Slice<uint8_t> data) {
 
         size_t size = std::min(maximum, data.size());
 
-        generate_udp(*buffer, src_ip, dest_ip, src_port, dest_port, data[Range{0, size}]);
+        generate_udp(*buffer, identifier, src_ip, dest_ip, src_port, dest_port,
+                     data[Range{0, size}]);
 
         data = data[Range{size}];
+
+        ++identifier;
     }
 
     return length;
