@@ -37,7 +37,8 @@ void icmp_ping(std::unique_ptr<BaseSocket> sock, uint32_t src_ip, uint32_t dest_
 
             if (icmp_header->get_type() != 0 ||
                 icmp_header->get_code() != 0 ||
-                icmp_header->get_ident() != src_port) { continue; }
+                icmp_header->get_ident() != src_port ||
+                icmp_header->get_seq() != i) { continue; }
 
             struct timeval tv1{};
             gettimeofday(&tv1, nullptr);

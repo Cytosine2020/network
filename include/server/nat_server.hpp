@@ -14,30 +14,9 @@
 namespace cs120 {
 class NatServer {
 private:
-    static const uint16_t NAT_PORTS_BASE = 45678;
-    static const uint16_t NAT_PORTS_SIZE = 1024;
-
     static void *nat_lan_to_wan(void *args_);
 
     static void *nat_wan_to_lan(void *args_);
-
-    static uint32_t get_nat_table_ip(uint64_t value) {
-        return (value & 0x00000000FFFFFFFFLLU) >> 0u;
-    }
-
-    static uint16_t get_nat_table_port(uint64_t value) {
-        return (value & 0x0000FFFF00000000LLU) >> 32u;
-    }
-
-    static uint16_t get_nat_table_extra(uint64_t value) {
-        return (value & 0xFFFF000000000000LLU) >> 48u;
-    }
-
-    static uint64_t assemble_nat_table_field(uint32_t ip, uint16_t port, uint16_t extra) {
-        return static_cast<uint64_t>(ip) |
-               (static_cast<uint64_t>(port) << 32u) |
-               (static_cast<uint64_t>(extra) << 48u);
-    }
 
     static uint16_t get_src_port_from_ip_datagram(MutSlice<uint8_t> datagram) {
         auto *ip_header = datagram.buffer_cast<struct ip>();
@@ -130,11 +109,33 @@ private:
     std::unique_ptr<BaseSocket> lan, wan;
     Array<std::atomic<uint64_t>> nat_table;
     std::unordered_map<uint64_t, uint16_t> nat_reverse_table;
+    size_t lowest_free_port;
     uint32_t addr;
 
 public:
+    static const uint16_t NAT_PORTS_BASE = 45678;
+    static const uint16_t NAT_PORTS_SIZE = 1024;
+
+    static uint32_t get_nat_table_ip(uint64_t value) {
+        return (value & 0x00000000FFFFFFFFLLU) >> 0u;
+    }
+
+    static uint16_t get_nat_table_port(uint64_t value) {
+        return (value & 0x0000FFFF00000000LLU) >> 32u;
+    }
+
+    static uint16_t get_nat_table_extra(uint64_t value) {
+        return (value & 0xFFFF000000000000LLU) >> 48u;
+    }
+
+    static uint64_t assemble_nat_table_field(uint32_t ip, uint16_t port) {
+        return static_cast<uint64_t>(ip) |
+               (static_cast<uint64_t>(port) << 32u) |
+               (static_cast<uint64_t>(1) << 48u);
+    }
+
     NatServer(uint32_t addr, std::unique_ptr<BaseSocket> lan, std::unique_ptr<BaseSocket> wan,
-              std::unordered_map<uint64_t, uint16_t> &&nat_reverse_table);
+              const Array<std::pair<uint32_t, uint16_t>> &map_addr);
 
     NatServer(NatServer &&other) = delete;
 

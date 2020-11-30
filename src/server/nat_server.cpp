@@ -7,8 +7,6 @@ namespace cs120 {
 void *NatServer::nat_lan_to_wan(void *args_) {
     auto *args = reinterpret_cast<NatServer *>(args_);
 
-    size_t lowest_free_port = NAT_PORTS_BASE;
-
     uint32_t sub_net_mask = inet_addr("255.255.255.0");
     uint32_t sub_net_addr = inet_addr("192.168.1.0");
 
@@ -34,24 +32,24 @@ void *NatServer::nat_lan_to_wan(void *args_) {
         } else {
             uint16_t lan_port = get_src_port_from_ip_datagram(*receive);
 
-            auto value = assemble_nat_table_field(src_ip, lan_port, 1);
+            auto value = assemble_nat_table_field(src_ip, lan_port);
 
             uint16_t wan_port = 0;
 
             auto table_ptr = args->nat_reverse_table.find(value);
             if (table_ptr == args->nat_reverse_table.end()) {
-                if (lowest_free_port >= NAT_PORTS_BASE + NAT_PORTS_SIZE) {
+                if (args->lowest_free_port >= NAT_PORTS_BASE + NAT_PORTS_SIZE) {
                     cs120_abort("nat ports used up!");
                 }
 
-                wan_port = lowest_free_port++;
+                wan_port = args->lowest_free_port++;
 
                 printf("port mapping add: %s:%d <-> %d\n",
                        inet_ntoa(in_addr{src_ip}), lan_port, wan_port);
 
                 size_t index = wan_port - NAT_PORTS_BASE;
 
-                args->nat_table[index].store(value, std::memory_order_seq_cst);
+                args->nat_table[index].store(value);
                 args->nat_reverse_table.emplace(value, wan_port);
             } else {
                 wan_port = table_ptr->second;
@@ -107,10 +105,25 @@ void *NatServer::nat_wan_to_lan(void *args_) {
 
 NatServer::NatServer(uint32_t addr, std::unique_ptr<BaseSocket> lan,
                      std::unique_ptr<BaseSocket> wan,
-                     std::unordered_map<uint64_t, uint16_t> &&nat_reverse_table) :
-        lan_to_wan{}, wan_to_lan{},
-        lan{std::move(lan)}, wan{std::move(wan)},
-        nat_table{NAT_PORTS_SIZE}, nat_reverse_table{std::move(nat_reverse_table)}, addr{addr} {
+                     const Array<std::pair<uint32_t, uint16_t>> &map_addr) :
+        lan_to_wan{}, wan_to_lan{}, lan{std::move(lan)}, wan{std::move(wan)},
+        nat_table{NAT_PORTS_SIZE}, nat_reverse_table{},
+        lowest_free_port{NAT_PORTS_BASE}, addr{addr} {
+    for (auto &[src_ip, lan_port]: map_addr) {
+        if (lowest_free_port >= NAT_PORTS_BASE + NAT_PORTS_SIZE) {
+            cs120_abort("nat ports used up!");
+        }
+
+        uint16_t wan_port = lowest_free_port++;
+        uint64_t value = assemble_nat_table_field(src_ip, lan_port);
+
+        nat_table[wan_port - NAT_PORTS_BASE].store(value);
+        nat_reverse_table.emplace(value, wan_port);
+
+        printf("port mapping add: %s:%d <-> %d\n", inet_ntoa(in_addr{src_ip}),
+               lan_port, wan_port);
+    }
+
     pthread_create(&lan_to_wan, nullptr, nat_lan_to_wan, this);
     pthread_create(&wan_to_lan, nullptr, nat_wan_to_lan, this);
 }

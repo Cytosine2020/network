@@ -29,6 +29,11 @@ add_executable(udp-send
         src/device/athernet_socket.cpp src/server/udp_server.cpp)
 target_link_libraries(udp-send pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
+add_executable(udp-recv
+        src/udp_recv.cpp src/wire.cpp src/queue.cpp src/athernet.cpp
+        src/device/raw_socket.cpp src/server/udp_server.cpp)
+target_link_libraries(udp-recv pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
+
 add_executable(nat-server
         src/nat.cpp src/wire.cpp src/queue.cpp src/athernet.cpp
         src/device/raw_socket.cpp src/device/unix_socket.cpp src/device/athernet_socket.cpp

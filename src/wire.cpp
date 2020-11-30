@@ -145,6 +145,18 @@ uint32_t get_local_ip() {
     return ip;
 }
 
+std::pair<uint32_t, uint16_t> parse_ip_address(const char *str) {
+    uint8_t buffer[4]{};
+    uint16_t lan_port = 0;
+
+    if (sscanf(str, "%hhd.%hhd.%hhd.%hhd:%hd", &buffer[0], &buffer[1], &buffer[2],
+               &buffer[3], &lan_port) != 5) { cs120_abort("input_format_error!"); }
+
+    uint32_t src_ip = *reinterpret_cast<uint32_t *>(buffer);
+
+    return std::make_pair(src_ip, lan_port);
+}
+
 void checksum_ip(MutSlice<uint8_t> frame) {
     auto *ip_header = frame.buffer_cast<struct ip>();
 

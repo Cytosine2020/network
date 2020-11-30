@@ -20,7 +20,8 @@ public:
               uint16_t src_port, uint16_t dest_port) :
             device{std::move(device)}, src_ip{src_ip}, dest_ip{dest_ip},
             src_port{src_port}, dest_port{dest_port},
-            receive_buffer{device->get_mtu()}, receive_buffer_slice(receive_buffer.begin(), 0) {}
+            receive_buffer{this->device->get_mtu()},
+            receive_buffer_slice{receive_buffer.begin(), 0} {}
 
     UDPServer(UDPServer &&other) noexcept = default;
 

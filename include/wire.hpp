@@ -2,6 +2,7 @@
 #define CS120_WIRE_HPP
 
 
+#include <utility>
 #include <sys/wait.h>
 #include <arpa/inet.h>
 #include <netinet/ip.h>
@@ -152,6 +153,8 @@ void format(const struct udphdr &object);
 void format(const Slice<uint8_t> &object);
 
 uint32_t get_local_ip();
+
+std::pair<uint32_t, uint16_t> parse_ip_address(const char *str);
 
 cs120_inline size_t ip_max_payload(size_t mtu) { return (mtu - sizeof(struct ip)) / 8 * 8; }
 

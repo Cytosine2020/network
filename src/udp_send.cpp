@@ -13,6 +13,7 @@ int main(int argc, char **argv) {
     if (argc != 2) { cs120_abort("accept 2 arguments"); }
 
     int file = open(argv[1], O_RDONLY);
+    if (file < 0) { cs120_abort("open error"); }
 
     struct stat tmp{};
 
