@@ -77,10 +77,11 @@ void *raw_socket_sender(void *args_) {
         auto *ip_header = buffer->buffer_cast<struct ip>();
         auto ip_data = (*buffer)[Range{ip_get_ihl(*ip_header), size}];
 
-        if (libnet_build_ipv4(ip_header->ip_len, ip_header->ip_tos, ip_header->ip_id,
-                              ip_header->ip_off, ip_header->ip_ttl, ip_header->ip_p,
-                              ip_header->ip_sum, ip_header->ip_src.s_addr,
-                              ip_header->ip_dst.s_addr, ip_data.begin(), ip_data.size(),
+        if (libnet_build_ipv4(ip_get_tot_len(*ip_header), ip_get_tos(*ip_header),
+                              ip_get_id(*ip_header), ip_get_offset(*ip_header),
+                              ip_get_ttl(*ip_header), ip_get_protocol(*ip_header),
+                              ip_get_check(*ip_header), ip_get_saddr(*ip_header).s_addr,
+                              ip_get_daddr(*ip_header).s_addr, ip_data.begin(), ip_data.size(),
                               args->context, 0) == -1) {
             cs120_abort(libnet_geterror(args->context));
         }
