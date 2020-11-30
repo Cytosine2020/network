@@ -17,7 +17,10 @@ struct pcap_callback_args {
 void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *packet) {
     auto *args = reinterpret_cast<pcap_callback_args *>(args_);
 
-    if (info->caplen != info->len) { cs120_abort("packet truncated!"); }
+    if (info->caplen != info->len) {
+        cs120_warn("packet truncated!");
+        return;
+    }
 
     Slice<uint8_t> eth_datagram{packet, info->caplen};
 
@@ -35,7 +38,6 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
     if (size == 0) { return; }
 
     auto slot = args->queue->try_send();
-
     if (slot->empty()) {
         cs120_warn("package loss!");
     } else {
@@ -55,38 +57,37 @@ void *raw_socket_receiver(void *args_) {
     }
 }
 
+struct raw_socket_sender_args {
+    libnet_t *context;
+    SPSCQueue *queue;
+};
+
 void *raw_socket_sender(void *args_) {
-    auto *queue = (SPSCQueue *) args_;
+    auto *args = reinterpret_cast<raw_socket_sender_args *>(args_);
 
     for (;;) {
-        char err_buf[LIBNET_ERRBUF_SIZE];
-        libnet_t *context = libnet_init(LIBNET_RAW4, nullptr, err_buf);
-        if (context == nullptr) { cs120_abort(err_buf); }
+        auto buffer = args->queue->recv();
 
-        auto buffer = queue->recv();
-        auto *ip_header = buffer->buffer_cast<struct ip>();
-
-        auto icmp_datagram = (*buffer)[Range{sizeof(struct ip)}];
-
-        auto *icmp_header = icmp_datagram.buffer_cast<struct icmp>();
-        auto payload = icmp_datagram[Range{sizeof(struct icmp)}];
-
-        if (libnet_build_icmpv4_echo(icmp_header->get_type(), 0, 0, icmp_header->get_ident(),
-                                     icmp_header->get_seq(), payload.begin(),
-                                     sizeof(struct timeval), context, 0) == -1) {
-            cs120_abort("Can't create IP header");
+        size_t size = get_ipv4_total_size(*buffer);
+        if (size == 0) {
+            cs120_warn("invalid package!");
+            continue;
         }
+
+        auto *ip_header = buffer->buffer_cast<struct ip>();
+        auto ip_data = (*buffer)[Range{ip_get_ihl(*ip_header), size}];
 
         if (libnet_build_ipv4(ip_header->ip_len, ip_header->ip_tos, ip_header->ip_id,
                               ip_header->ip_off, ip_header->ip_ttl, ip_header->ip_p,
                               ip_header->ip_sum, ip_header->ip_src.s_addr,
-                              ip_header->ip_dst.s_addr, nullptr, 0, context, 0) == -1) {
-            cs120_abort("Can't create IP header");
+                              ip_header->ip_dst.s_addr, ip_data.begin(), ip_data.size(),
+                              args->context, 0) == -1) {
+            cs120_abort(libnet_geterror(args->context));
         }
 
-        if (libnet_write(context) == -1) { cs120_abort(libnet_geterror(context)); }
+        if (libnet_write(args->context) == -1) { cs120_abort(libnet_geterror(args->context)); }
 
-        libnet_destroy(context);
+        libnet_clear_packet(args->context);
     }
 }
 }
@@ -104,26 +105,36 @@ RawSocket::RawSocket(size_t size, uint32_t ip_addr) :
                                          0, 1, pcap_error);
     if (pcap_handle == nullptr) { cs120_abort(pcap_error); }
 
+    char err_buf[LIBNET_ERRBUF_SIZE];
+    libnet_t *context = libnet_init(LIBNET_RAW4_ADV, device->name, err_buf);
+    if (context == nullptr) { cs120_abort(err_buf); }
+
     pcap_freealldevs(device);
 
     receive_queue = new SPSCQueue{get_mtu(), size};
     send_queue = new SPSCQueue{get_mtu(), size};
 
-    auto *args = new pcap_callback_args{
+    auto *recv_args = new pcap_callback_args{
             .pcap_handle = pcap_handle,
             .filter = (struct bpf_program) {},
             .queue = receive_queue,
             .ip_addr = ip_addr,
     };
 
+    auto *send_args = new raw_socket_sender_args{
+            .context = context,
+            .queue = send_queue,
+    };
+
     char expr[100]{};
     snprintf(expr, 100, "(icmp or udp) and (dst host %s)", inet_ntoa(in_addr{ip_addr}));
 
-    if (pcap_compile(pcap_handle, &args->filter, expr, 0, PCAP_NETMASK_UNKNOWN) == PCAP_ERROR) {
+    if (pcap_compile(pcap_handle, &recv_args->filter, "", 0, PCAP_NETMASK_UNKNOWN) ==
+        PCAP_ERROR) {
         cs120_abort(pcap_geterr(pcap_handle));
     }
 
-    pthread_create(&receiver, nullptr, raw_socket_receiver, args);
-    pthread_create(&sender, nullptr, raw_socket_sender, send_queue);
+    pthread_create(&receiver, nullptr, raw_socket_receiver, recv_args);
+    pthread_create(&sender, nullptr, raw_socket_sender, send_args);
 }
 }

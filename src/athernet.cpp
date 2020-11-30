@@ -15,8 +15,16 @@ void *unix_socket_sender(void *args_) {
         auto slot = args->queue->recv();
 
         auto size = get_ipv4_total_size(*slot);
-        if (size == 0) { cs120_abort("invalid package!"); }
-        if (size >= ATHERNET_MTU) { cs120_abort("package truncated!"); }
+        if (size == 0) {
+            format(*slot);
+
+            cs120_warn("invalid package!");
+            continue;
+        }
+        if (size >= ATHERNET_MTU) {
+            cs120_warn("package truncated!");
+            continue;
+        }
 
         buffer[0] = static_cast<uint8_t>(size);
         MutSlice<uint8_t>{buffer, ATHERNET_MTU}[Range{1}][Range{0, size}]

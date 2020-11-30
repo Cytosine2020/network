@@ -110,7 +110,7 @@ private:
     Array<std::atomic<uint64_t>> nat_table;
     std::unordered_map<uint64_t, uint16_t> nat_reverse_table;
     size_t lowest_free_port;
-    uint32_t addr;
+    uint32_t ip_addr;
 
 public:
     static const uint16_t NAT_PORTS_BASE = 45678;
@@ -134,7 +134,7 @@ public:
                (static_cast<uint64_t>(1) << 48u);
     }
 
-    NatServer(uint32_t addr, std::unique_ptr<BaseSocket> lan, std::unique_ptr<BaseSocket> wan,
+    NatServer(uint32_t ip_addr, std::unique_ptr<BaseSocket> lan, std::unique_ptr<BaseSocket> wan,
               const Array<std::pair<uint32_t, uint16_t>> &map_addr);
 
     NatServer(NatServer &&other) = delete;

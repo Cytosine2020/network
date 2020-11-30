@@ -23,9 +23,11 @@ int main(int argc, char **argv) {
 
     Array<uint8_t> buffer{2048};
 
-    size_t size = server.recv(buffer);
+    for (;;) {
+        size_t size = server.recv(buffer);
 
-    if (static_cast<size_t>(write(file, buffer.begin(), size)) != size) {
-        cs120_abort("write error");
+        if (static_cast<size_t>(write(file, buffer.begin(), size)) != size) {
+            cs120_abort("write error");
+        }
     }
 }
