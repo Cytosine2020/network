@@ -75,15 +75,15 @@ cs120_inline uint16_t ip_get_id(const struct ip &header) {
 }
 
 cs120_inline uint16_t ip_get_offset(const struct ip &header) {
-    return ntohs(header.ip_off & IP_OFFMASK);
+    return (ntohs(header.ip_off) & IP_OFFMASK) * 8;
 }
 
 cs120_inline bool ip_get_do_not_fragment(const struct ip &header) {
-    return ntohs(header.ip_off & IP_DF) > 0;
+    return (ntohs(header.ip_off) & IP_DF) > 0;
 }
 
 cs120_inline bool ip_get_more_fragment(const struct ip &header) {
-    return ntohs(header.ip_off & IP_MF) > 0;
+    return (ntohs(header.ip_off) & IP_MF) > 0;
 }
 
 cs120_inline uint8_t ip_get_ttl(const struct ip &header) {
@@ -98,12 +98,12 @@ cs120_inline uint16_t ip_get_check(const struct ip &header) {
     return header.ip_sum;
 }
 
-cs120_inline struct in_addr ip_get_saddr(const struct ip &header) {
-    return in_addr{header.ip_src};
+cs120_inline uint32_t ip_get_saddr(const struct ip &header) {
+    return header.ip_src.s_addr;
 }
 
-cs120_inline struct in_addr ip_get_daddr(const struct ip &header) {
-    return in_addr{header.ip_dst};
+cs120_inline uint32_t ip_get_daddr(const struct ip &header) {
+    return header.ip_dst.s_addr;
 }
 
 cs120_inline uint16_t udphdr_get_source(const struct udphdr &header) {

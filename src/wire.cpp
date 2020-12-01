@@ -61,8 +61,8 @@ void format(const struct ip &object) {
     printf("\ttime to live: %d,\n", static_cast<uint32_t>(ip_get_ttl(object)));
     printf("\tprotocol: %d,\n", static_cast<uint32_t>(ip_get_protocol(object)));
     printf("\theader checksum: %s,\n", checksum);
-    printf("\tsource ip: %s,\n", inet_ntoa(ip_get_saddr(object)));
-    printf("\tdestination ip: %s,\n", inet_ntoa(ip_get_daddr(object)));
+    printf("\tsource ip: %s,\n", inet_ntoa(in_addr{ip_get_saddr(object)}));
+    printf("\tdestination ip: %s,\n", inet_ntoa(in_addr{ip_get_daddr(object)}));
     printf("}\n");
 }
 
@@ -173,7 +173,7 @@ void generate_ip(MutSlice<uint8_t> frame, uint16_t identifier, uint8_t protocol,
     ip_header->ip_tos = 0;
     ip_header->ip_len = htons(sizeof(struct ip) + len);
     ip_header->ip_id = htons(identifier);
-    ip_header->ip_off = IP_DF;
+    ip_header->ip_off = htons(IP_DF);
     ip_header->ip_ttl = 64;
     ip_header->ip_p = protocol;
     ip_header->ip_src.s_addr = src_ip;

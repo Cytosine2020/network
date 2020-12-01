@@ -17,10 +17,8 @@ void *NatServer::nat_lan_to_wan(void *args_) {
         auto *ip_header = receive->buffer_cast<struct ip>();
         size_t ip_data_size = get_ipv4_total_size(*receive);
 
-        format(*ip_header);
-
-        uint32_t src_ip = ip_get_saddr(*ip_header).s_addr;
-        uint32_t dest_ip = ip_get_daddr(*ip_header).s_addr;
+        uint32_t src_ip = ip_get_saddr(*ip_header);
+        uint32_t dest_ip = ip_get_daddr(*ip_header);
 
         // drop if send to subnet
         if (src_ip == args->ip_addr) { continue; }
@@ -60,7 +58,7 @@ void *NatServer::nat_lan_to_wan(void *args_) {
             }
 
             ip_header->ip_src = in_addr{args->ip_addr};
-            checksum_ip(*send);
+            checksum_ip(*receive);
 
             set_src_port_from_ip_datagram(*receive, wan_port);
 
@@ -101,7 +99,7 @@ void *NatServer::nat_wan_to_lan(void *args_) {
             auto lan_port = get_nat_table_port(value);
 
             ip_header->ip_dst = in_addr{lan_ip};
-            checksum_ip(*send);
+            checksum_ip(*receive);
 
             set_dest_port_from_ip_datagram(*receive, lan_port);
 

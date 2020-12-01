@@ -7,7 +7,7 @@
 #include <unordered_map>
 #include <mutex>
 
-#include "device/mod.hpp"
+#include "device/base_socket.hpp"
 #include "wire.hpp"
 
 

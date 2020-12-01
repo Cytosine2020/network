@@ -14,6 +14,7 @@ struct pcap_callback_args {
     uint32_t ip_addr;
 };
 
+// todo: check header
 void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *packet) {
     auto *args = reinterpret_cast<pcap_callback_args *>(args_);
 
@@ -24,24 +25,22 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
 
     Slice<uint8_t> eth_datagram{packet, info->caplen};
 
-    auto *eth_header = eth_datagram.buffer_cast<struct ethhdr>();
+    auto[eth_header, eth_data] = eth_datagram.buffer_split<struct ethhdr>();
     if (eth_header == nullptr || eth_header->h_proto != 8) { return; }
 
-    auto *ip_header = eth_datagram.buffer_cast<struct ip>();
+    auto *ip_header = eth_data.buffer_cast<struct ip>();
+    if (ip_header == nullptr) { return; }
 
-    uint32_t src_ip = ip_get_saddr(*ip_header).s_addr;
+    uint32_t src_ip = ip_get_saddr(*ip_header);
     if (src_ip == args->ip_addr) { return; }
 
-    auto ip_datagram = eth_datagram[Range{sizeof(struct ethhdr)}];
-
-    size_t size = get_ipv4_total_size(ip_datagram);
-    if (size == 0) { return; }
+    auto ip_data_size = ip_get_tot_len(*ip_header);
 
     auto slot = args->queue->try_send();
     if (slot->empty()) {
         cs120_warn("package loss!");
     } else {
-        (*slot)[Range{0, size}].copy_from_slice(ip_datagram[Range{0, size}]);
+        (*slot)[Range{0, ip_data_size}].copy_from_slice(eth_data[Range{0, ip_data_size}]);
     }
 }
 
@@ -80,13 +79,13 @@ void *raw_socket_sender(void *args_) {
         if (libnet_build_ipv4(ip_get_tot_len(*ip_header), ip_get_tos(*ip_header),
                               ip_get_id(*ip_header), ip_get_offset(*ip_header),
                               ip_get_ttl(*ip_header), ip_get_protocol(*ip_header),
-                              ip_get_check(*ip_header), ip_get_saddr(*ip_header).s_addr,
-                              ip_get_daddr(*ip_header).s_addr, ip_data.begin(), ip_data.size(),
+                              ip_get_check(*ip_header), ip_get_saddr(*ip_header),
+                              ip_get_daddr(*ip_header), ip_data.begin(), ip_data.size(),
                               args->context, 0) == -1) {
             cs120_abort(libnet_geterror(args->context));
         }
 
-        if (libnet_write(args->context) == -1) { cs120_abort(libnet_geterror(args->context)); }
+        if (libnet_write(args->context) == -1) { cs120_warn(libnet_geterror(args->context)); }
 
         libnet_clear_packet(args->context);
     }
@@ -128,7 +127,7 @@ RawSocket::RawSocket(size_t size, uint32_t ip_addr) :
     };
 
     char expr[100]{};
-    snprintf(expr, 100, "(icmp or udp) and (dst host %s)", inet_ntoa(in_addr{ip_addr}));
+    snprintf(expr, 100, "(icmp or udp or tcp) and (dst host %s)", inet_ntoa(in_addr{ip_addr}));
 
     if (pcap_compile(pcap_handle, &recv_args->filter, "", 0, PCAP_NETMASK_UNKNOWN) ==
         PCAP_ERROR) {

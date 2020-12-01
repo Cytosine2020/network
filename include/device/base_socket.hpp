@@ -1,5 +1,5 @@
-#ifndef CS120_MOD_HPP
-#define CS120_MOD_HPP
+#ifndef CS120_BASE_SOCKET_HPP
+#define CS120_BASE_SOCKET_HPP
 
 
 #include "queue.hpp"
@@ -23,4 +23,4 @@ public:
 }
 
 
-#endif //CS120_MOD_HPP
+#endif //CS120_BASE_SOCKET_HPP

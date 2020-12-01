@@ -6,7 +6,7 @@
 
 #include "utility.hpp"
 #include "queue.hpp"
-#include "mod.hpp"
+#include "base_socket.hpp"
 #include "athernet.hpp"
 
 
@@ -19,7 +19,7 @@ private:
     int athernet;
 
 public:
-    AthernetSocket(size_t size);
+    explicit AthernetSocket(size_t size);
 
     AthernetSocket(AthernetSocket &&other) noexcept = default;
 

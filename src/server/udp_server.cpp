@@ -54,8 +54,9 @@ size_t UDPServer::recv(MutSlice<uint8_t> data) {
 
         if (ip_get_protocol(*ip_header) != IPPROTO_UDP) { continue; }
 
-        if (ip_get_daddr(*ip_header).s_addr != src_ip ||
-            ip_get_saddr(*ip_header).s_addr != dest_ip) { continue; }
+        if (ip_get_daddr(*ip_header) != src_ip || ip_get_saddr(*ip_header) != dest_ip) {
+            continue;
+        }
 
         auto ip_data = (*buffer)[Range{header_length, total_length}];
 

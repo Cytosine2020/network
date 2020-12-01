@@ -6,7 +6,7 @@
 
 #include "utility.hpp"
 #include "queue.hpp"
-#include "device/mod.hpp"
+#include "device/base_socket.hpp"
 
 
 namespace cs120 {

@@ -2,7 +2,7 @@
 #define CS120_UDP_SERVER_HPP
 
 
-#include "device/mod.hpp"
+#include "device/base_socket.hpp"
 
 
 namespace cs120 {

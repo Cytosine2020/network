@@ -31,7 +31,7 @@ void icmp_ping(std::unique_ptr<BaseSocket> sock, uint32_t src_ip, uint32_t dest_
 
             if (ip_get_version(*ip_header) != 4 ||
                 ip_get_protocol(*ip_header) != 1 ||
-                ip_get_daddr(*ip_header).s_addr != src_ip) { continue; }
+                ip_get_daddr(*ip_header) != src_ip) { continue; }
 
             auto ip_data = ip_datagram[Range{static_cast<size_t>(ip_get_ihl(*ip_header))}];
             auto *icmp_header = ip_data.buffer_cast<icmp>();
@@ -44,13 +44,13 @@ void icmp_ping(std::unique_ptr<BaseSocket> sock, uint32_t src_ip, uint32_t dest_
             struct timeval tv1{};
             gettimeofday(&tv1, nullptr);
 
-            auto udp_data = ip_data[Range{sizeof(icmp)}].buffer_cast<struct timeval>();
+            auto icmp_data = ip_data[Range{sizeof(icmp)}].buffer_cast<struct timeval>();
 
             format(*ip_header);
             format(*icmp_header);
 
-            uint32_t interval = (tv1.tv_usec - udp_data->tv_usec) / 1000 +
-                                (tv1.tv_sec - udp_data->tv_sec) * 1000;
+            uint32_t interval = (tv1.tv_usec - icmp_data->tv_usec) / 1000 +
+                                (tv1.tv_sec - icmp_data->tv_sec) * 1000;
 
             printf("TTL %d ms\n", interval);
 
