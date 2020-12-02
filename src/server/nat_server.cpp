@@ -1,6 +1,6 @@
 #include "server/nat_server.hpp"
 
-#include "wire.hpp"
+#include "wire/wire.hpp"
 
 
 namespace cs120 {
@@ -14,54 +14,64 @@ void *NatServer::nat_lan_to_wan(void *args_) {
 
     for (;;) {
         auto receive = args->lan->recv();
-        auto *ip_header = receive->buffer_cast<struct ip>();
-        size_t ip_data_size = get_ipv4_total_size(*receive);
+        auto *ip_header = receive->buffer_cast<IPV4Header>();
+        if (ip_header == nullptr) {
+            cs120_warn("invalid package!");
+            continue;
+        }
 
-        uint32_t src_ip = ip_get_saddr(*ip_header);
-        uint32_t dest_ip = ip_get_daddr(*ip_header);
+        size_t ip_data_size = ip_header->get_total_length();
+
+        uint32_t src_ip = ip_header->get_source_ip();
+        uint32_t dest_ip = ip_header->get_destination_ip();
 
         // drop if send to subnet
         if (src_ip == args->ip_addr) { continue; }
         if ((dest_ip & sub_net_mask) == sub_net_addr) { continue; }
 
+        if (ip_header->get_time_to_live() == 0) { continue; }
+
         if (ip_data_size > wan_mtu) {
             cs120_warn("package truncated!");
         }
+
+        uint16_t lan_port = get_src_port_from_ip_datagram(*receive);
+        if (lan_port == 0) { continue; }
+
+        auto value = assemble_nat_table_field(src_ip, lan_port);
+
+        uint16_t wan_port = 0;
+
+        auto table_ptr = args->nat_reverse_table.find(value);
+        if (table_ptr == args->nat_reverse_table.end()) {
+            if (args->lowest_free_port >= NAT_PORTS_BASE + NAT_PORTS_SIZE) {
+                cs120_abort("nat ports used up!");
+            }
+
+            wan_port = args->lowest_free_port++;
+
+            printf("port mapping add: %s:%d <-> %d\n",
+                   inet_ntoa(in_addr{src_ip}), lan_port, wan_port);
+
+            size_t index = wan_port - NAT_PORTS_BASE;
+
+            args->nat_table[index].store(value);
+            args->nat_reverse_table.emplace(value, wan_port);
+        } else {
+            wan_port = table_ptr->second;
+        }
+
+        ip_header->set_time_to_live(ip_header->get_time_to_live() - 1);
+        ip_header->set_source_ip(args->ip_addr);
+        ip_header->set_checksum(0);
+        ip_header->set_checksum(complement_checksum(ip_header->into_slice()));
+
+        set_src_port_from_ip_datagram(*receive, wan_port);
 
         auto send = args->wan->try_send();
         if (send->empty()) {
             cs120_warn("package loss!");
         } else {
-            uint16_t lan_port = get_src_port_from_ip_datagram(*receive);
-
-            auto value = assemble_nat_table_field(src_ip, lan_port);
-
-            uint16_t wan_port = 0;
-
-            auto table_ptr = args->nat_reverse_table.find(value);
-            if (table_ptr == args->nat_reverse_table.end()) {
-                if (args->lowest_free_port >= NAT_PORTS_BASE + NAT_PORTS_SIZE) {
-                    cs120_abort("nat ports used up!");
-                }
-
-                wan_port = args->lowest_free_port++;
-
-                printf("port mapping add: %s:%d <-> %d\n",
-                       inet_ntoa(in_addr{src_ip}), lan_port, wan_port);
-
-                size_t index = wan_port - NAT_PORTS_BASE;
-
-                args->nat_table[index].store(value);
-                args->nat_reverse_table.emplace(value, wan_port);
-            } else {
-                wan_port = table_ptr->second;
-            }
-
-            ip_header->ip_src = in_addr{args->ip_addr};
-            checksum_ip(*receive);
-
-            set_src_port_from_ip_datagram(*receive, wan_port);
-
             (*send)[Range{0, ip_data_size}].copy_from_slice((*receive)[Range{0, ip_data_size}]);
         }
     }
@@ -74,10 +84,19 @@ void *NatServer::nat_wan_to_lan(void *args_) {
 
     for (;;) {
         auto receive = args->wan->recv();
-        auto *ip_header = receive->buffer_cast<struct ip>();
-        size_t ip_data_size = get_ipv4_total_size(*receive);
+
+        auto *ip_header = receive->buffer_cast<IPV4Header>();
+        if (ip_header == nullptr) {
+            cs120_warn("invalid package!");
+            continue;
+        }
+
+        if (ip_header->get_time_to_live() == 0) { continue; }
+
+        size_t ip_data_size = ip_header->get_total_length();
 
         uint16_t wan_port = get_dest_port_from_ip_datagram(*receive);
+        if (wan_port == 0) { continue; }
 
         size_t index = wan_port - NAT_PORTS_BASE;
         if (index >= NAT_PORTS_SIZE) { continue; }
@@ -91,18 +110,20 @@ void *NatServer::nat_wan_to_lan(void *args_) {
             continue;
         }
 
+        auto lan_ip = get_nat_table_ip(value);
+        auto lan_port = get_nat_table_port(value);
+
+        ip_header->set_time_to_live(ip_header->get_time_to_live() - 1);
+        ip_header->set_destination_ip(lan_ip);
+        ip_header->set_checksum(0);
+        ip_header->set_checksum(complement_checksum(ip_header->into_slice()));
+
+        set_dest_port_from_ip_datagram(*receive, lan_port);
+
         auto send = args->lan->try_send();
         if (send->empty()) {
             cs120_warn("package loss!");
         } else {
-            auto lan_ip = get_nat_table_ip(value);
-            auto lan_port = get_nat_table_port(value);
-
-            ip_header->ip_dst = in_addr{lan_ip};
-            checksum_ip(*receive);
-
-            set_dest_port_from_ip_datagram(*receive, lan_port);
-
             (*send)[Range{0, ip_data_size}].copy_from_slice((*receive)[Range{0, ip_data_size}]);
         }
     }

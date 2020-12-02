@@ -1,6 +1,6 @@
 #include <fcntl.h>
 
-#include "wire.hpp"
+#include "wire/wire.hpp"
 #include "device/unix_socket.hpp"
 #include "server/udp_server.hpp"
 
@@ -30,6 +30,6 @@ int main(int argc, char **argv) {
             cs120_abort("write error");
         }
 
-        format(buffer[Range{0, size}]);
+        buffer[Range{0, size}].format();
     }
 }

@@ -7,7 +7,7 @@
 #include "pcap/pcap.h"
 
 #include "utility.hpp"
-#include "wire.hpp"
+#include "wire/wire.hpp"
 #include "queue.hpp"
 #include "base_socket.hpp"
 

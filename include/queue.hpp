@@ -63,7 +63,7 @@ private:
     size_t buffer_size, size;
     std::atomic<size_t> start, end;
 
-    size_t index_increase(size_t index) const { return (index + 1) % size; }
+    size_t index_increase(size_t index) const { return index + 1 >= size ? 0 : index + 1; }
 
     MutSlice<uint8_t> get_slot(size_t index) {
         return inner[Range{index * buffer_size}][Range{0, buffer_size}];

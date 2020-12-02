@@ -41,6 +41,7 @@ cs120_static_inline cs120_no_return void _unreachable(const char *file, int line
 
 #define cs120_unreachable(msg) cs120::_unreachable(__FILE__, __LINE__, msg)
 
+cs120_static_inline const char *bool_to_string(bool value) { return value ? "true" : "false"; }
 
 template<typename T, size_t end, size_t begin>
 struct bits_mask {
@@ -208,6 +209,18 @@ public:
     Array<T> clone() const { return _clone<SubT, T>::inner(*sub_type()); }
 
     bool empty() const { return sub_type()->size() == 0; }
+
+    void format() const {
+        size_t i = 0;
+
+        for (auto &item: *sub_type()) {
+            if (i % 32 == 0) { printf(&"\n%.4X: "[i == 0], static_cast<uint32_t>(i)); }
+            printf("%.2X ", item);
+            ++i;
+        }
+
+        printf("\n");
+    }
 };
 
 
@@ -244,7 +257,7 @@ public:
     void copy_from_slice(Slice<T> other) { _copy<SubT, T>::inner(*sub_type(), other); }
 };
 
-template<typename SubT, typename T>
+template<typename SubT>
 struct BufferTrait {
 private:
     const SubT *sub_type() const { return reinterpret_cast<const SubT *>(this); }
@@ -254,23 +267,12 @@ public:
     const U *buffer_cast() const {
         if (!std::is_same<typename SubT::Item, uint8_t>::value) { return nullptr; }
         if (sub_type()->size() < sizeof(U)) { return nullptr; }
-        return reinterpret_cast<const U *>(sub_type()->begin());
-    }
-
-    template<typename U>
-    std::pair<const U *, Slice<T>> buffer_split() const {
-        if (!std::is_same<typename SubT::Item, uint8_t>::value) {
-            return std::make_pair(nullptr, Slice<T>{});
-        }
-        if (sub_type()->size() < sizeof(U)) { return std::make_pair(nullptr, Slice<T>{}); }
-        return std::make_pair(
-                reinterpret_cast<const U *>(sub_type()->begin()),
-                (*sub_type())[Range{sizeof(U)}]);
+        return U::from_slice(*sub_type());
     }
 };
 
-template<typename SubT, typename T>
-struct MutBufferTrait : public BufferTrait<SubT, T> {
+template<typename SubT>
+struct MutBufferTrait : public BufferTrait<SubT> {
 private:
     SubT *sub_type() { return reinterpret_cast<SubT *>(this); }
 
@@ -279,18 +281,7 @@ public:
     U *buffer_cast() {
         if (!std::is_same<typename SubT::Item, uint8_t>::value) { return nullptr; }
         if (sub_type()->size() < sizeof(U)) { return nullptr; }
-        else { return reinterpret_cast<U *>(sub_type()->begin()); }
-    }
-
-    template<typename U>
-    std::pair<U *, MutSlice<T>> buffer_split() {
-        if (!std::is_same<typename SubT::Item, uint8_t>::value) {
-            return std::make_pair(nullptr, Slice<T>{});
-        }
-        if (sub_type()->size() < sizeof(U)) { return std::make_pair(nullptr, Slice<T>{}); }
-        return std::make_pair(
-                reinterpret_cast<U *>(sub_type()->begin()),
-                (*sub_type())[Range{sizeof(U)}]);
+        return U::from_slice(*sub_type());
     }
 };
 
@@ -299,7 +290,7 @@ template<typename T>
 class Array :
         public MutIndexTrait<Array<T>, T>,
         public MutSliceTrait<Array<T>, T>,
-        public MutBufferTrait<Array<T>, T> {
+        public MutBufferTrait<Array<T>> {
 private:
     T *inner;
     size_t size_;
@@ -343,7 +334,7 @@ template<typename T>
 class MutSlice :
         public MutIndexTrait<MutSlice<T>, T>,
         public MutSliceTrait<MutSlice<T>, T>,
-        public MutBufferTrait<MutSlice<T>, T> {
+        public MutBufferTrait<MutSlice<T>> {
 private:
     T *inner;
     size_t size_;
@@ -374,7 +365,7 @@ template<typename T>
 class Slice :
         public IndexTrait<Slice<T>, T>,
         public SliceTrait<Slice<T>, T>,
-        public BufferTrait<Slice<T>, T> {
+        public BufferTrait<Slice<T>> {
 private:
     const T *inner;
     size_t size_;

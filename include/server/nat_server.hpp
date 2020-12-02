@@ -8,7 +8,10 @@
 #include <mutex>
 
 #include "device/base_socket.hpp"
-#include "wire.hpp"
+#include "wire/wire.hpp"
+#include "wire/ipv4.hpp"
+#include "wire/icmp.hpp"
+#include "wire/udp.hpp"
 
 
 namespace cs120 {
@@ -19,19 +22,21 @@ private:
     static void *nat_wan_to_lan(void *args_);
 
     static uint16_t get_src_port_from_ip_datagram(MutSlice<uint8_t> datagram) {
-        auto *ip_header = datagram.buffer_cast<struct ip>();
-        auto ip_data = datagram[Range{ip_get_ihl(*ip_header), ip_get_tot_len(*ip_header)}];
+        auto *ip_header = datagram.buffer_cast<IPV4Header>();
+        if (ip_header == nullptr) { return 0; }
+        auto ip_data = datagram[Range{ip_header->get_header_length(),
+                                      ip_header->get_total_length()}];
 
-        switch (ip_get_protocol(*ip_header)) {
-            case 1: {
-                auto *icmp_header = ip_data.buffer_cast<struct icmp>();
+        switch (ip_header->get_protocol()) {
+            case IPV4Header::ICMP: {
+                auto *icmp_header = ip_data.buffer_cast<ICMPHeader>();
                 if (icmp_header == nullptr) { return 0; }
-                return icmp_header->get_ident();
+                return icmp_header->get_identification();
             }
-            case 17: {
-                auto *udp_header = ip_data.buffer_cast<struct udphdr>();
+            case IPV4Header::UDP: {
+                auto *udp_header = ip_data.buffer_cast<UDPHeader>();
                 if (udp_header == nullptr) { return 0; }
-                return udphdr_get_source(*udp_header);
+                return udp_header->get_source_port();
             }
             default:
                 return 0;
@@ -39,22 +44,25 @@ private:
     }
 
     static void set_src_port_from_ip_datagram(MutSlice<uint8_t> datagram, uint16_t port) {
-        auto *ip_header = datagram.buffer_cast<struct ip>();
-        auto ip_data = datagram[Range{ip_get_ihl(*ip_header), ip_get_tot_len(*ip_header)}];
-        size_t ip_data_size = ip_get_tot_len(*ip_header) - ip_get_ihl(*ip_header);
+        auto *ip_header = datagram.buffer_cast<IPV4Header>();
+        if (ip_header == nullptr) { return; }
+        auto ip_data = datagram[Range{ip_header->get_header_length(),
+                                      ip_header->get_total_length()}];
 
-        switch (ip_get_protocol(*ip_header)) {
-            case 1: {
-                auto *icmp_header = ip_data.buffer_cast<struct icmp>();
+        switch (ip_header->get_protocol()) {
+            case IPV4Header::ICMP: {
+                auto *icmp_header = ip_data.buffer_cast<ICMPHeader>();
                 if (icmp_header == nullptr) { return; }
-                icmp_header->set_ident(port);
-                checksum_icmp(ip_data, ip_data_size);
+                icmp_header->set_identification(port);
+                icmp_header->set_checksum(0);
+                icmp_header->set_checksum(complement_checksum(ip_data));
                 return;
             }
-            case 17: {
-                auto *udp_header = ip_data.buffer_cast<struct udphdr>();
+            case IPV4Header::UDP: {
+                auto *udp_header = ip_data.buffer_cast<UDPHeader>();
                 if (udp_header == nullptr) { return; }
-                checksum_udp(ip_data);
+                udp_header->set_source_port(port);
+                udp_header->set_checksum(0);
                 return;
             }
             default:
@@ -63,19 +71,21 @@ private:
     }
 
     static uint16_t get_dest_port_from_ip_datagram(MutSlice<uint8_t> datagram) {
-        auto *ip_header = datagram.buffer_cast<struct ip>();
-        auto ip_data = datagram[Range{ip_get_ihl(*ip_header), ip_get_tot_len(*ip_header)}];
+        auto *ip_header = datagram.buffer_cast<IPV4Header>();
+        if (ip_header == nullptr) { return 0; }
+        auto ip_data = datagram[Range{ip_header->get_header_length(),
+                                      ip_header->get_total_length()}];
 
-        switch (ip_get_protocol(*ip_header)) {
-            case 1: {
-                auto *icmp_header = ip_data.buffer_cast<struct icmp>();
+        switch (ip_header->get_protocol()) {
+            case IPV4Header::ICMP: {
+                auto *icmp_header = ip_data.buffer_cast<ICMPHeader>();
                 if (icmp_header == nullptr) { return 0; }
-                return icmp_header->get_ident();
+                return icmp_header->get_identification();
             }
-            case 17: {
-                auto *udp_header = ip_data.buffer_cast<struct udphdr>();
+            case IPV4Header::UDP: {
+                auto *udp_header = ip_data.buffer_cast<UDPHeader>();
                 if (udp_header == nullptr) { return 0; }
-                return udphdr_get_dest(*udp_header);
+                return udp_header->get_destination_port();
             }
             default:
                 return 0;
@@ -83,23 +93,25 @@ private:
     }
 
     static void set_dest_port_from_ip_datagram(MutSlice<uint8_t> datagram, uint16_t port) {
-        auto *ip_header = datagram.buffer_cast<struct ip>();
-        auto ip_data = datagram[Range{ip_get_ihl(*ip_header), ip_get_tot_len(*ip_header)}];
-        size_t ip_data_size = ip_get_tot_len(*ip_header) - ip_get_ihl(*ip_header);
+        auto *ip_header = datagram.buffer_cast<IPV4Header>();
+        if (ip_header == nullptr) { return; }
+        auto ip_data = datagram[Range{ip_header->get_header_length(),
+                                      ip_header->get_total_length()}];
 
-        switch (ip_get_protocol(*ip_header)) {
-            case 1: {
-                auto *icmp_header = ip_data.buffer_cast<struct icmp>();
+        switch (ip_header->get_protocol()) {
+            case IPV4Header::ICMP: {
+                auto *icmp_header = ip_data.buffer_cast<ICMPHeader>();
                 if (icmp_header == nullptr) { return; }
-                icmp_header->set_ident(port);
-                checksum_icmp(ip_data, ip_data_size);
+                icmp_header->set_identification(port);
+                icmp_header->set_checksum(0);
+                icmp_header->set_checksum(complement_checksum(ip_data));
                 return;
             }
-            case 17: {
-                auto *udp_header = ip_data.buffer_cast<struct udphdr>();
+            case IPV4Header::UDP: {
+                auto *udp_header = ip_data.buffer_cast<UDPHeader>();
                 if (udp_header == nullptr) { return; }
-                udphdr_set_dest(*udp_header, port);
-                checksum_udp(ip_data);
+                udp_header->set_destination_port(port);
+                udp_header->set_checksum(0);
                 return;
             }
             default:

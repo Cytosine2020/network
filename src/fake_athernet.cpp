@@ -1,4 +1,4 @@
-#include "wire.hpp"
+#include "wire/wire.hpp"
 #include "device/athernet_socket.hpp"
 #include "server/icmp_server.hpp"
 

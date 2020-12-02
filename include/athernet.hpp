@@ -5,7 +5,7 @@
 #include <cstdint>
 
 #include "queue.hpp"
-#include "wire.hpp"
+#include "wire/wire.hpp"
 
 
 namespace cs120 {

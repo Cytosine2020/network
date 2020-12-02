@@ -1,7 +1,12 @@
+#include "device/raw_socket.hpp"
+
 #include <numeric>
 #include "pthread.h"
 
-#include "device/raw_socket.hpp"
+#include "pcap/pcap.h"
+
+#include "wire/wire.hpp"
+#include "wire/ipv4.hpp"
 
 
 namespace {
@@ -14,7 +19,6 @@ struct pcap_callback_args {
     uint32_t ip_addr;
 };
 
-// todo: check header
 void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *packet) {
     auto *args = reinterpret_cast<pcap_callback_args *>(args_);
 
@@ -25,22 +29,29 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
 
     Slice<uint8_t> eth_datagram{packet, info->caplen};
 
-    auto[eth_header, eth_data] = eth_datagram.buffer_split<struct ethhdr>();
-    if (eth_header == nullptr || eth_header->h_proto != 8) { return; }
+    auto *eth_header = eth_datagram.buffer_cast<ETHHeader>();
+    if (eth_header == nullptr || eth_header->protocol != 8) {
+        cs120_warn("invalid package!");
+        return;
+    }
 
-    auto *ip_header = eth_data.buffer_cast<struct ip>();
-    if (ip_header == nullptr) { return; }
+    auto eth_data = eth_datagram[Range(sizeof(ETHHeader))];
 
-    uint32_t src_ip = ip_get_saddr(*ip_header);
-    if (src_ip == args->ip_addr) { return; }
+    auto *ip_header = eth_data.buffer_cast<IPV4Header>();
+    if (ip_header == nullptr) {
+        cs120_warn("invalid package!");
+        return;
+    }
 
-    auto ip_data_size = ip_get_tot_len(*ip_header);
+    if (ip_header->get_source_ip() == args->ip_addr &&
+        ip_header->get_destination_ip() != args->ip_addr) { return; }
 
     auto slot = args->queue->try_send();
     if (slot->empty()) {
         cs120_warn("package loss!");
     } else {
-        (*slot)[Range{0, ip_data_size}].copy_from_slice(eth_data[Range{0, ip_data_size}]);
+        auto ip_datagram = eth_data[Range{0, ip_header->get_total_length()}];
+        (*slot)[Range{0, ip_datagram.size()}].copy_from_slice(ip_datagram);
     }
 }
 
@@ -67,20 +78,20 @@ void *raw_socket_sender(void *args_) {
     for (;;) {
         auto buffer = args->queue->recv();
 
-        size_t size = get_ipv4_total_size(*buffer);
-        if (size == 0) {
+        auto *ip_header = buffer->buffer_cast<IPV4Header>();
+        if (ip_header == nullptr) {
             cs120_warn("invalid package!");
             continue;
         }
 
-        auto *ip_header = buffer->buffer_cast<struct ip>();
-        auto ip_data = (*buffer)[Range{ip_get_ihl(*ip_header), size}];
+        auto ip_data = (*buffer)[Range{ip_header->get_header_length(),
+                                       ip_header->get_total_length()}];
 
-        if (libnet_build_ipv4(ip_get_tot_len(*ip_header), ip_get_tos(*ip_header),
-                              ip_get_id(*ip_header), ip_get_offset(*ip_header),
-                              ip_get_ttl(*ip_header), ip_get_protocol(*ip_header),
-                              ip_get_check(*ip_header), ip_get_saddr(*ip_header),
-                              ip_get_daddr(*ip_header), ip_data.begin(), ip_data.size(),
+        if (libnet_build_ipv4(ip_header->get_total_length(), ip_header->get_type_of_service(),
+                              ip_header->get_identification(), ip_header->get_fragment(),
+                              ip_header->get_time_to_live(), ip_header->get_protocol(),
+                              ip_header->get_checksum(), ip_header->get_source_ip(),
+                              ip_header->get_destination_ip(), ip_data.begin(), ip_data.size(),
                               args->context, 0) == -1) {
             cs120_abort(libnet_geterror(args->context));
         }
@@ -126,11 +137,8 @@ RawSocket::RawSocket(size_t size, uint32_t ip_addr) :
             .queue = send_queue,
     };
 
-    char expr[100]{};
-    snprintf(expr, 100, "(icmp or udp or tcp) and (dst host %s)", inet_ntoa(in_addr{ip_addr}));
-
-    if (pcap_compile(pcap_handle, &recv_args->filter, "", 0, PCAP_NETMASK_UNKNOWN) ==
-        PCAP_ERROR) {
+    if (pcap_compile(pcap_handle, &recv_args->filter, "icmp or udp or tcp", 0,
+                     PCAP_NETMASK_UNKNOWN) == PCAP_ERROR) {
         cs120_abort(pcap_geterr(pcap_handle));
     }
 
