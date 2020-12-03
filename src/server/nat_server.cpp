@@ -14,13 +14,14 @@ void *NatServer::nat_lan_to_wan(void *args_) {
 
     for (;;) {
         auto receive = args->lan->recv();
+
         auto *ip_header = receive->buffer_cast<IPV4Header>();
         if (ip_header == nullptr) {
             cs120_warn("invalid package!");
             continue;
         }
 
-        size_t ip_data_size = ip_header->get_total_length();
+        if (ip_header->get_time_to_live() == 0) { continue; }
 
         uint32_t src_ip = ip_header->get_source_ip();
         uint32_t dest_ip = ip_header->get_destination_ip();
@@ -29,14 +30,14 @@ void *NatServer::nat_lan_to_wan(void *args_) {
         if (src_ip == args->ip_addr) { continue; }
         if ((dest_ip & sub_net_mask) == sub_net_addr) { continue; }
 
-        if (ip_header->get_time_to_live() == 0) { continue; }
-
-        if (ip_data_size > wan_mtu) {
-            cs120_warn("package truncated!");
-        }
-
         uint16_t lan_port = get_src_port_from_ip_datagram(*receive);
         if (lan_port == 0) { continue; }
+
+        size_t ip_data_size = ip_header->get_total_length();
+        if (ip_data_size > wan_mtu) {
+            cs120_warn("package truncated!");
+            continue;
+        }
 
         auto value = assemble_nat_table_field(src_ip, lan_port);
 
@@ -93,8 +94,6 @@ void *NatServer::nat_wan_to_lan(void *args_) {
 
         if (ip_header->get_time_to_live() == 0) { continue; }
 
-        size_t ip_data_size = ip_header->get_total_length();
-
         uint16_t wan_port = get_dest_port_from_ip_datagram(*receive);
         if (wan_port == 0) { continue; }
 
@@ -102,9 +101,9 @@ void *NatServer::nat_wan_to_lan(void *args_) {
         if (index >= NAT_PORTS_SIZE) { continue; }
 
         auto value = args->nat_table[index].load();
-
         if (get_nat_table_extra(value) == 0) { continue; }
 
+        size_t ip_data_size = ip_header->get_total_length();
         if (ip_data_size > lan_mtu) {
             cs120_warn("package truncated!");
             continue;

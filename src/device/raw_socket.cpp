@@ -30,10 +30,12 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
     Slice<uint8_t> eth_datagram{packet, info->caplen};
 
     auto *eth_header = eth_datagram.buffer_cast<ETHHeader>();
-    if (eth_header == nullptr || eth_header->protocol != 8) {
+    if (eth_header == nullptr) {
         cs120_warn("invalid package!");
         return;
     }
+
+    if (eth_header->protocol != 8) { return; }
 
     auto eth_data = eth_datagram[Range(sizeof(ETHHeader))];
 

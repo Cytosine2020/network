@@ -14,6 +14,6 @@
   - macos
  
     ```bash
-    $ brew install libcap
+    $ brew install libpcap
     $ brew install libnet
     ```

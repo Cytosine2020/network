@@ -230,19 +230,13 @@ struct _copy;
 template<typename U, typename T>
 struct _copy<U, T, true> {
     static void inner(U &self, Slice<T> other) {
-        if (self.size() != other.size()) { cs120_abort("slice size does not match!"); }
-
-        for (size_t i = 0; i < self.size(); ++i) {
-            self.begin()[i] = other.begin()[i];
-        }
+        for (size_t i = 0; i < self.size(); ++i) { self.begin()[i] = other.begin()[i]; }
     }
 };
 
 template<typename U, typename T>
 struct _copy<U, T, false> {
     static void inner(const U &self, Slice<T> other) {
-        if (self.size() != other.size()) { cs120_abort("slice size does not match!"); }
-
         memcpy(self.begin(), other.begin(), self.size() * sizeof(T));
     }
 };
@@ -254,7 +248,10 @@ private:
     SubT *sub_type() { return reinterpret_cast<SubT *>(this); }
 
 public:
-    void copy_from_slice(Slice<T> other) { _copy<SubT, T>::inner(*sub_type(), other); }
+    void copy_from_slice(Slice<T> other) {
+        if (sub_type()->size() != other.size()) { cs120_abort("slice size does not match!"); }
+        _copy<SubT, T>::inner(*sub_type(), other);
+    }
 };
 
 template<typename SubT>

@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <unistd.h>
+#include <sys/wait.h>
 
 #include "pcap/pcap.h"
 
@@ -20,19 +21,14 @@ uint16_t complement_checksum(Slice<uint8_t> buffer_) {
 }
 
 uint32_t get_local_ip() {
-    char buffer[1024]{};
-
     char pcap_error[PCAP_ERRBUF_SIZE]{};
     pcap_if_t *device = nullptr;
-
     if (pcap_findalldevs(&device, pcap_error) == PCAP_ERROR) { cs120_abort(pcap_error); }
 
     int pipe_fd[2] = {-1, -1};
-
     if (pipe(pipe_fd) != 0) { cs120_abort("pipe error"); }
 
     int child = fork();
-
     switch (child) {
         case -1:
             cs120_abort("fork error");
@@ -45,19 +41,14 @@ uint32_t get_local_ip() {
     }
 
     int child_state = 0;
-
     if (waitpid(child, &child_state, 0) != child) { cs120_abort("waitpid error"); }
-
     if (!WIFEXITED(child_state)) { cs120_abort("ifconfig execution failed!"); }
 
+    char buffer[1024]{};
     ssize_t size = read(pipe_fd[0], buffer, 1024);
-
     if (size < 0) { cs120_abort("read error"); }
 
-    const char *start = strstr(buffer, "inet ") + sizeof("inet");
-
-    uint32_t ip = inet_addr(start);
-
+    uint32_t ip = inet_addr(strstr(buffer, "inet ") + sizeof("inet"));
     if (ip == static_cast<uint32_t>(-1)) { cs120_abort("invalid ip"); }
 
     pcap_freealldevs(device);
@@ -74,8 +65,6 @@ std::pair<uint32_t, uint16_t> parse_ip_address(const char *str) {
     if (sscanf(str, "%hhd.%hhd.%hhd.%hhd:%hd", &buffer[0], &buffer[1], &buffer[2],
                &buffer[3], &lan_port) != 5) { cs120_abort("input_format_error!"); }
 
-    uint32_t src_ip = *reinterpret_cast<uint32_t *>(buffer);
-
-    return std::make_pair(src_ip, lan_port);
+    return std::make_pair(*reinterpret_cast<uint32_t *>(buffer), lan_port);
 }
 }
