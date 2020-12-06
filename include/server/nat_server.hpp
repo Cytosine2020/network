@@ -12,6 +12,7 @@
 #include "wire/ipv4.hpp"
 #include "wire/icmp.hpp"
 #include "wire/udp.hpp"
+#include "wire/tcp.hpp"
 
 
 namespace cs120 {

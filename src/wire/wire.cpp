@@ -67,4 +67,16 @@ std::pair<uint32_t, uint16_t> parse_ip_address(const char *str) {
 
     return std::make_pair(*reinterpret_cast<uint32_t *>(buffer), lan_port);
 }
+
+void ETHHeader::format() const {
+    printf("Ethernet Header {\n");
+    printf("\tdestination address: ");
+    print_mac_addr(destination_mac);
+    printf(",\n");
+    printf("\tsource address: ");
+    print_mac_addr(source_mac);
+    printf(",\n");
+    printf("\tprotocol: %d,\n", protocol);
+    printf("}\n");
+}
 }

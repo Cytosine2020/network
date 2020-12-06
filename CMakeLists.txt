@@ -1,4 +1,5 @@
 cmake_minimum_required(VERSION 3.0)
+
 project(CS120)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -24,33 +25,28 @@ add_executable(fake-athernet
         src/device/athernet_socket.cpp src/server/icmp_server.cpp)
 target_link_libraries(fake-athernet pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
-add_executable(udp-send
-        src/udp_send.cpp src/wire/wire.cpp src/queue.cpp src/athernet.cpp
-        src/device/unix_socket.cpp src/server/udp_server.cpp)
-target_link_libraries(udp-send pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
+add_executable(udp
+        src/udp.cpp src/wire/wire.cpp src/queue.cpp src/athernet.cpp
+        src/device/raw_socket.cpp src/server/udp_server.cpp)
+target_link_libraries(udp pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
-add_executable(udp-recv
-        src/udp_recv.cpp src/wire/wire.cpp src/queue.cpp src/athernet.cpp
-        src/device/unix_socket.cpp src/server/udp_server.cpp)
-target_link_libraries(udp-recv pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
-
-add_executable(nat-server
+add_executable(nat
         src/nat.cpp src/wire/wire.cpp src/queue.cpp src/athernet.cpp
         src/device/raw_socket.cpp src/device/unix_socket.cpp src/device/athernet_socket.cpp
         src/server/nat_server.cpp src/server/udp_server.cpp src/server/icmp_server.cpp)
-target_link_libraries(nat-server pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
+target_link_libraries(nat pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
 if (APPLE)
     add_custom_command(
-            TARGET nat-server
+            TARGET nat
             POST_BUILD
-            COMMAND chmod 700 nat-server
+            COMMAND chmod 700 nat
             VERBATIM)
 elseif (UNIX)
     add_custom_command(
-            TARGET nat-server
+            TARGET nat
             POST_BUILD
-            COMMAND chmod 700 nat-server && sudo setcap cap_net_admin,cap_net_raw=eip nat-server
+            COMMAND chmod 700 nat && sudo setcap cap_net_admin,cap_net_raw=eip nat
             COMMENT "Grant access for raw socket"
             VERBATIM)
 endif ()

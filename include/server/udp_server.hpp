@@ -22,7 +22,7 @@ public:
             device{std::move(device)}, src_ip{src_ip}, dest_ip{dest_ip},
             src_port{src_port}, dest_port{dest_port},
             receive_buffer{this->device->get_mtu()},
-            receive_buffer_slice{receive_buffer.begin(), 0}, identifier{1} {}
+            receive_buffer_slice{}, identifier{1} {}
 
     UDPServer(UDPServer &&other) noexcept = default;
 

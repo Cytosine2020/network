@@ -42,17 +42,7 @@ struct ETHHeader {
         return const_cast<ETHHeader *>(from_slice(Slice<uint8_t>{data}));
     }
 
-    void format() const {
-        printf("Ethernet Header {\n");
-        printf("\tdestination address: ");
-        print_mac_addr(destination_mac);
-        printf(",\n");
-        printf("\tsource address: ");
-        print_mac_addr(source_mac);
-        printf(",\n");
-        printf("\tprotocol: %d,\n", protocol);
-        printf("}\n");
-    }
+    void format() const;
 }__attribute__((packed));
 }
 
