@@ -4,7 +4,7 @@
 
 #include "wire/wire.hpp"
 #include "device/raw_socket.hpp"
-#include "server/udp_server.hpp"
+#include "server/tcp_server.hpp"
 
 
 using namespace cs120;
@@ -37,7 +37,7 @@ int main(int argc, char **argv) {
 
         if (strcmp(argv[2], "-a") == 0) {
             std::unique_ptr<BaseSocket> sock(new RawSocket{64, get_local_ip()});
-            UDPServer server{std::move(sock), src_ip, dest_ip, src_port, dest_port};
+            auto server = TCPServer::accept(std::move(sock), src_ip, dest_ip, src_port, dest_port);
 
             size_t i = 0, j = 0;
             for (; i < data.size(); ++i) {
@@ -50,9 +50,7 @@ int main(int argc, char **argv) {
 
             if (j < i) { server.send(data[Range{j, i}]); }
         } else if (strcmp(argv[2], "-e") == 0) {
-            if (argc < 2) { cs120_abort("need option\n"); }
-
-            int sock = socket(AF_INET, SOCK_DGRAM, 0);
+            int sock = socket(AF_INET, SOCK_STREAM, 0);
             if (sock < 0) { cs120_abort("socket error"); }
 
             struct sockaddr_in src_addr{};
@@ -60,7 +58,7 @@ int main(int argc, char **argv) {
             src_addr.sin_port = htons(src_port);
             src_addr.sin_addr = in_addr{htonl(INADDR_ANY)};
 
-            if (bind(sock, reinterpret_cast<const sockaddr *>(&src_addr),
+            if (bind(sock, reinterpret_cast<sockaddr *>(&src_addr),
                      sizeof(struct sockaddr_in))) { cs120_abort("bind error"); }
 
             struct sockaddr_in dest_addr{};
@@ -68,14 +66,24 @@ int main(int argc, char **argv) {
             dest_addr.sin_port = htons(dest_port);
             dest_addr.sin_addr = in_addr{dest_ip};
 
+            if (connect(sock, reinterpret_cast<sockaddr *>(&dest_addr),
+                        sizeof(struct sockaddr_in)) < 0) { cs120_abort("connect error"); }
+
+//            socklen_t length = 0;
+//            if (listen(sock, 0) != 0) { cs120_abort("listen error"); }
+//            int fd = accept(sock, reinterpret_cast<sockaddr *>(&dest_addr), &length);
+//            if (fd < 0) { cs120_abort("accept error"); }
+//
+//            close(sock);
+
             size_t i = 0, j = 0;
             for (; i < data.size(); ++i) {
                 if (data[i] == '\n') {
                     auto slice = data[Range{j, i + 1}];
 
-                    if (sendto(sock, slice.begin(), slice.size(), 0,
-                               reinterpret_cast<const sockaddr *>(&dest_addr),
-                               sizeof(struct sockaddr_in)) == -1) { cs120_abort("sendto error"); }
+                    if (send(sock, slice.begin(), slice.size(), 0) == -1) {
+                        cs120_abort("send error");
+                    }
 
                     j = i + 1;
                     sleep(1);
@@ -85,9 +93,9 @@ int main(int argc, char **argv) {
             if (j < i) {
                 auto slice = data[Range{j, i + 1}];
 
-                if (sendto(sock, slice.begin(), slice.size(), 0,
-                           reinterpret_cast<const sockaddr *>(&dest_addr),
-                           sizeof(struct sockaddr_in)) == -1) { cs120_abort("sendto error"); }
+                if (send(sock, slice.begin(), slice.size(), 0) == -1) {
+                    cs120_abort("send error");
+                }
             }
 
             close(sock);
@@ -104,10 +112,11 @@ int main(int argc, char **argv) {
 
         if (strcmp(argv[2], "-a") == 0) {
             std::unique_ptr<BaseSocket> sock(new RawSocket{64, get_local_ip()});
-            UDPServer server{std::move(sock), src_ip, dest_ip, src_port, dest_port};
+            auto server = TCPServer::accept(std::move(sock), src_ip, dest_ip, src_port, dest_port);
 
             for (;;) {
                 size_t size = server.recv(buffer);
+                if (size == 0) { break; }
 
                 if (static_cast<size_t>(write(file, buffer.begin(), size)) != size) {
                     cs120_abort("write error");
@@ -117,7 +126,7 @@ int main(int argc, char **argv) {
                 printf("%.*s\n", static_cast<uint32_t>(size), buffer.begin());
             }
         } else if (strcmp(argv[2], "-e") == 0) {
-            int sock = socket(AF_INET, SOCK_DGRAM, 0);
+            int sock = socket(AF_INET, SOCK_STREAM, 0);
             if (sock < 0) { cs120_abort("socket error"); }
 
             struct sockaddr_in src_addr{};
@@ -125,23 +134,26 @@ int main(int argc, char **argv) {
             src_addr.sin_port = htons(src_port);
             src_addr.sin_addr = in_addr{htonl(INADDR_ANY)};
 
-            if (bind(sock, reinterpret_cast<const sockaddr *>(&src_addr),
+            if (bind(sock, reinterpret_cast<sockaddr *>(&src_addr),
                      sizeof(struct sockaddr_in))) { cs120_abort("bind error"); }
 
-            Array<uint8_t> slice{2048};
+            struct sockaddr_in dest_addr{};
+            dest_addr.sin_family = AF_INET;
+            dest_addr.sin_port = htons(dest_port);
+            dest_addr.sin_addr = in_addr{dest_ip};
+
+            if (connect(sock, reinterpret_cast<sockaddr *>(&dest_addr),
+                        sizeof(struct sockaddr_in)) < 0) { cs120_abort("connect error"); }
 
             for (;;) {
-                struct sockaddr_in dest_addr{};
-                socklen_t socklen = sizeof(struct sockaddr_in);
+                ssize_t count = recv(sock, buffer.begin(), buffer.size(), 0);
+                if (count == -1) { cs120_abort("recv error"); }
+                if (count == 0) { break; }
 
-                ssize_t count = recvfrom(sock, slice.begin(), slice.size(), 0,
-                                         reinterpret_cast<sockaddr *>(&dest_addr), &socklen);
-                if (count == -1) { cs120_abort("recvfrom error"); }
-
-                if (write(file, slice.begin(), count) != count) { cs120_abort("write error"); }
+                if (write(file, buffer.begin(), count) != count) { cs120_abort("write error"); }
 
                 printf("%s:%u: ", inet_ntoa(dest_addr.sin_addr), ntohs(dest_addr.sin_port));
-                printf("%.*s\n", static_cast<uint32_t>(count), slice.begin());
+                printf("%.*s\n", static_cast<uint32_t>(count), buffer.begin());
             }
 
             close(sock);

@@ -71,8 +71,8 @@ private:
 
 public:
     SPSCQueue(size_t buffer_size, size_t size) :
-            lock{}, variable{}, inner{buffer_size * size},
-            buffer_size{buffer_size}, size{size}, start{0}, end{0} {}
+            lock{}, variable{}, inner{divide_ceil<size_t>(buffer_size, 8) * 8 * size},
+            buffer_size{divide_ceil<size_t>(buffer_size, 8) * 8}, size{size}, start{0}, end{0} {}
 
     SPSCQueue(const SPSCQueue &other) = delete;
 

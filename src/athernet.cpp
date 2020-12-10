@@ -15,7 +15,6 @@ void *unix_socket_sender(void *args_) {
     for (;;) {
         auto slot = args->queue->recv();
         auto *ip_header = slot->buffer_cast<IPV4Header>();
-
         if (ip_header == nullptr) {
             cs120_warn("invalid package!");
             continue;

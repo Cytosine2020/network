@@ -2,7 +2,7 @@
  
 ## prerequisites
 
-- install `libcap` and `libnet` for ip package sniffing and injecting.
+- install `libcap` and `libnet` for ip package sniffing and injecting
 
   - ubuntu or debian
   
@@ -16,4 +16,12 @@
     ```bash
     $ brew install libpcap
     $ brew install libnet
+    ```
+
+- firewall settings
+
+  - macos: disable default behavior of icmp, udp, and tcp.
+
+    ```bash
+    $ sudo ./script/nat_init.sh
     ```

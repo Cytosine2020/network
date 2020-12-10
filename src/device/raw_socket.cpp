@@ -1,9 +1,10 @@
 #include "device/raw_socket.hpp"
 
-#include <numeric>
 #include "pthread.h"
+#include <numeric>
 
 #include "pcap/pcap.h"
+#include "libnet.h"
 
 #include "wire/wire.hpp"
 #include "wire/ipv4.hpp"
@@ -40,13 +41,13 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
     auto eth_data = eth_datagram[Range(sizeof(ETHHeader))];
 
     auto *ip_header = eth_data.buffer_cast<IPV4Header>();
-    if (ip_header == nullptr) {
+    if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
         cs120_warn("invalid package!");
         return;
     }
 
-    if (ip_header->get_source_ip() == args->ip_addr &&
-        ip_header->get_destination_ip() != args->ip_addr) { return; }
+    if (ip_header->get_src_ip() == args->ip_addr &&
+            ip_header->get_dest_ip() != args->ip_addr) { return; }
 
     auto slot = args->queue->try_send();
     if (slot->empty()) {
@@ -80,21 +81,24 @@ void *raw_socket_sender(void *args_) {
     for (;;) {
         auto buffer = args->queue->recv();
 
-        auto *ip_header = buffer->buffer_cast<IPV4Header>();
+        auto[ip_header, ip_option, ip_data] = ipv4_split(*buffer); // todo
         if (ip_header == nullptr) {
             cs120_warn("invalid package!");
             continue;
         }
 
-        auto ip_data = (*buffer)[Range{ip_header->get_header_length(),
-                                       ip_header->get_total_length()}];
-
         if (libnet_build_ipv4(ip_header->get_total_length(), ip_header->get_type_of_service(),
                               ip_header->get_identification(), ip_header->get_fragment(),
-                              ip_header->get_time_to_live(), ip_header->get_protocol(),
-                              ip_header->get_checksum(), ip_header->get_source_ip(),
-                              ip_header->get_destination_ip(), ip_data.begin(), ip_data.size(),
+                              ip_header->get_time_to_live(),
+                              static_cast<uint8_t>(ip_header->get_protocol()),
+                              ip_header->get_checksum(), ip_header->get_src_ip(),
+                              ip_header->get_dest_ip(), ip_data.begin(), ip_data.size(),
                               args->context, 0) == -1) {
+            cs120_abort(libnet_geterror(args->context));
+        }
+
+        if (!ip_option.empty() && libnet_build_ipv4_options(
+                ip_option.begin(), ip_option.size(), args->context, 0) == -1) {
             cs120_abort(libnet_geterror(args->context));
         }
 

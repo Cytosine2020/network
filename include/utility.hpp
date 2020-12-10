@@ -60,7 +60,7 @@ public:
     static constexpr T val = bits_mask<T, begin + 1, begin>::val;
 };
 
-template<typename T, size_t end, size_t begin, ssize_t offset = 0, bool flag = (begin > offset)>
+template<typename T, size_t end, size_t begin, ssize_t offset = 0, bool = (begin > offset)>
 struct _get_bits;
 
 template<typename T, size_t end, size_t begin, ssize_t offset>
@@ -80,7 +80,7 @@ public:
 };
 
 template<typename T, size_t end, size_t begin, ssize_t offset = 0>
-constexpr inline T get_bits(T val) {
+constexpr T get_bits(T val) {
     static_assert(sizeof(T) * 8 >= end, "end exceed length");
     static_assert(end > begin, "end need to be bigger than start");
     static_assert(sizeof(T) * 8 >= end - begin + offset, "result exceed length");
@@ -89,10 +89,10 @@ constexpr inline T get_bits(T val) {
 }
 
 template<typename T, size_t begin, ssize_t offset = 0>
-constexpr inline T get_bit(T val) { return get_bits<T, begin + 1, begin, offset>(val); }
+constexpr T get_bit(T val) { return get_bits<T, begin + 1, begin, offset>(val); }
 
 template<typename T>
-T divide_ceil(T a, T b) {
+constexpr T divide_ceil(T a, T b) {
     static_assert(std::is_unsigned<T>::value, "this function is only for unsigned!");
 
     return a == 0 ? 0 : (a - 1) / b + 1;
@@ -100,14 +100,19 @@ T divide_ceil(T a, T b) {
 
 
 struct Range {
+private:
     size_t begin_;
     size_t end_;
 
-    Range() : begin_{0}, end_{0} {}
-
+public:
     explicit Range(size_t start) : begin_{start}, end_{0} {}
 
-    Range(size_t start, size_t end) : begin_{start}, end_{end} {}
+    Range(size_t start, size_t end) : begin_{start}, end_{end} {
+        if (start == 0 && end == 0) {
+            begin_ = 1;
+            end_ = 1;
+        }
+    }
 
     size_t begin() const { return begin_; }
 
@@ -138,7 +143,8 @@ public:
     }
 
     Slice<T> operator[](Range range) const {
-        if (range.end() == 0) { range.end_ = sub_type()->size(); }
+        if (range.end() == 0) { range = Range{range.begin(), sub_type()->size()}; }
+        if (range.begin() == range.end()) { return Slice<T>{}; }
 
         if (range.begin() > range.end() || range.end() > sub_type()->size()) {
             cs120_abort("index out of boundary!");
@@ -161,7 +167,8 @@ public:
     }
 
     MutSlice<T> operator[](Range range) {
-        if (range.end() == 0) { range.end_ = sub_type()->size(); }
+        if (range.end() == 0) { range = Range{range.begin(), sub_type()->size()}; }
+        if (range.begin() == range.end()) { return MutSlice<T>{}; }
 
         if (range.begin() > range.end() || range.end() > sub_type()->size()) {
             cs120_abort("index out of boundary!");
@@ -171,16 +178,18 @@ public:
     }
 };
 
-template<typename U, typename T, bool flag = std::is_pod<T>::value>
+template<typename U, typename T, bool = std::is_pod<T>::value>
 struct _clone;
 
 template<typename U, typename T>
 struct _clone<U, T, true> {
     static Array<T> inner(const U &self) {
-        Array other{self.size_};
+        Array<T> other{};
 
-        for (size_t i = 0; i < self.size_; ++i) {
-            other.begin()[i] = self.begin()[i];
+        if (!self->empty()) {
+            other.inner = new T[self->size()];
+            other.size_ = self->size();
+            memcpy(other.begin(), self.begin(), self->size() * sizeof(T));
         }
 
         return other;
@@ -190,12 +199,10 @@ struct _clone<U, T, true> {
 template<typename U, typename T>
 struct _clone<U, T, false> {
     static Array<T> inner(const U &self) {
-        Array<T> other{};
-        other.inner = new T[self->size()];
-        other.size_ = self->size();
+        if (self->empty()) { return Array<T>{}; }
 
-        memcpy(other.begin(), self.begin(), self->size() * sizeof(T));
-
+        Array other{self->size()};
+        for (size_t i = 0; i < self->size(); ++i) { other.begin()[i] = self.begin()[i]; }
         return other;
     }
 };
@@ -224,20 +231,20 @@ public:
 };
 
 
-template<typename U, typename T, bool flag = std::is_pod<T>::value>
+template<typename U, typename T, bool = std::is_pod<T>::value>
 struct _copy;
 
 template<typename U, typename T>
 struct _copy<U, T, true> {
     static void inner(U &self, Slice<T> other) {
-        for (size_t i = 0; i < self.size(); ++i) { self.begin()[i] = other.begin()[i]; }
+        if (!self.empty()) { memcpy(self.begin(), other.begin(), self.size() * sizeof(T)); }
     }
 };
 
 template<typename U, typename T>
 struct _copy<U, T, false> {
     static void inner(const U &self, Slice<T> other) {
-        memcpy(self.begin(), other.begin(), self.size() * sizeof(T));
+        for (size_t i = 0; i < self.size(); ++i) { self.begin()[i] = other.begin()[i]; }
     }
 };
 
@@ -264,6 +271,10 @@ public:
     const U *buffer_cast() const {
         if (!std::is_same<typename SubT::Item, uint8_t>::value) { return nullptr; }
         if (sub_type()->size() < sizeof(U)) { return nullptr; }
+        auto ptr = reinterpret_cast<size_t>(sub_type()->begin());
+        if ((ptr & (std::alignment_of<U>::value - 1)) != 0) {
+            cs120_abort("given ptr not aligned!");
+        }
         return U::from_slice(*sub_type());
     }
 };
@@ -278,6 +289,10 @@ public:
     U *buffer_cast() {
         if (!std::is_same<typename SubT::Item, uint8_t>::value) { return nullptr; }
         if (sub_type()->size() < sizeof(U)) { return nullptr; }
+        auto ptr = reinterpret_cast<size_t>(sub_type()->begin());
+        if ((ptr & (std::alignment_of<U>::value - 1)) != 0) {
+            cs120_abort("given ptr not aligned!");
+        }
         return U::from_slice(*sub_type());
     }
 };
@@ -343,7 +358,12 @@ public:
 
     MutSlice(Array<T> &other) : inner{other.begin()}, size_{other.size()} {}
 
-    MutSlice(T *inner, size_t size_) : inner{inner}, size_{size_} {}
+    MutSlice(T *inner, size_t size_) : inner{inner}, size_{size_} {
+        auto ptr = reinterpret_cast<size_t>(inner);
+        if ((ptr & (std::alignment_of<T>::value - 1)) != 0) {
+            cs120_abort("given ptr not aligned!");
+        }
+    }
 
     size_t size() const { return size_; }
 
@@ -376,7 +396,12 @@ public:
 
     Slice(MutSlice<T> other) : inner{other.begin()}, size_{other.size()} {}
 
-    Slice(const T *inner, size_t size_) : inner{inner}, size_{size_} {}
+    Slice(const T *inner, size_t size_) : inner{inner}, size_{size_} {
+        auto ptr = reinterpret_cast<size_t>(inner);
+        if ((ptr & (std::alignment_of<T>::value - 1)) != 0) {
+            cs120_abort("given ptr not aligned!");
+        }
+    }
 
     size_t size() const { return size_; }
 

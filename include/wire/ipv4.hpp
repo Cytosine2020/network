@@ -11,14 +11,14 @@
 
 
 namespace cs120 {
-struct IPV4Header {
-public:
-    enum Protocol : uint8_t {
-        ICMP = 1,
-        TCP = 6,
-        UDP = 17,
-    };
+enum class IPV4Protocol : uint8_t {
+    ICMP = 1,
+    TCP = 6,
+    UDP = 17,
+};
 
+
+struct IPV4Header {
 private:
     static constexpr uint8_t VERSION = 4;
 
@@ -39,15 +39,15 @@ private:
     uint16_t identification;
     uint16_t fragment_offset;
     uint8_t time_to_live;
-    Protocol protocol;
+    IPV4Protocol protocol;
     uint16_t checksum;
-    uint32_t source_ip;
-    uint32_t destination_ip;
+    uint32_t src_ip;
+    uint32_t dest_ip;
 
 public:
     static size_t max_payload(size_t mtu) { return (mtu - sizeof(IPV4Header)) / 8 * 8; }
 
-    IPV4Header(uint16_t identifier, Protocol protocol,
+    IPV4Header(uint16_t identifier, IPV4Protocol protocol,
                uint32_t src_ip, uint32_t dest_ip, size_t len) {
         set_header_length(sizeof(IPV4Header));
         set_version();
@@ -58,11 +58,11 @@ public:
         set_time_to_live(64);
         set_protocol(protocol);
         set_checksum(0);
-        set_source_ip(src_ip);
-        set_destination_ip(dest_ip);
+        set_src_ip(src_ip);
+        set_dest_ip(dest_ip);
     }
 
-    static size_t generate(MutSlice<uint8_t> frame, uint16_t identifier, Protocol protocol,
+    static size_t generate(MutSlice <uint8_t> frame, uint16_t identifier, IPV4Protocol protocol,
                            uint32_t src_ip, uint32_t dest_ip, size_t len) {
         if (frame.size() < sizeof(IPV4Header)) { return 0; }
 
@@ -74,18 +74,17 @@ public:
         return sizeof(IPV4Header);
     }
 
-    Slice<uint8_t> into_slice() const {
+    Slice <uint8_t> into_slice() const {
         return Slice<uint8_t>{reinterpret_cast<const uint8_t *>(this), get_header_length()};
     }
 
-    MutSlice<uint8_t> into_slice() {
+    MutSlice <uint8_t> into_slice() {
         return MutSlice<uint8_t>{reinterpret_cast<uint8_t *>(this), get_header_length()};
     }
 
-    static const IPV4Header *from_slice(Slice<uint8_t> data) {
+    static const IPV4Header *from_slice(Slice <uint8_t> data) {
         auto *result = reinterpret_cast<const IPV4Header *>(data.begin());
-        if (complement_checksum(result->into_slice()) != 0 ||
-            data.size() < result->get_total_length() ||
+        if (data.size() < result->get_total_length() ||
             result->get_total_length() < result->get_header_length() ||
             result->get_header_length() < sizeof(IPV4Header) ||
             result->get_version() != VERSION) { return nullptr; }
@@ -93,7 +92,7 @@ public:
         return result;
     }
 
-    static IPV4Header *from_slice(MutSlice<uint8_t> data) {
+    static IPV4Header *from_slice(MutSlice <uint8_t> data) {
         return const_cast<IPV4Header *>(from_slice(Slice<uint8_t>{data}));
     }
 
@@ -150,40 +149,119 @@ public:
 
     void set_time_to_live(uint8_t value) { time_to_live = value; }
 
-    uint8_t get_protocol() const { return protocol; }
+    IPV4Protocol get_protocol() const { return protocol; }
 
-    void set_protocol(Protocol value) { protocol = value; }
+    void set_protocol(IPV4Protocol value) { protocol = value; }
 
     uint16_t get_checksum() const { return checksum; }
 
     void set_checksum(uint16_t value) { checksum = value; }
 
-    uint32_t get_source_ip() const { return source_ip; }
+    uint32_t get_src_ip() const { return src_ip; }
 
-    void set_source_ip(uint32_t value) { source_ip = value; }
+    void set_src_ip(uint32_t value) { src_ip = value; }
 
-    uint32_t get_destination_ip() const { return destination_ip; }
+    uint32_t get_dest_ip() const { return dest_ip; }
 
-    void set_destination_ip(uint32_t value) { destination_ip = value; }
+    void set_dest_ip(uint32_t value) { dest_ip = value; }
 
     void format() const {
         printf("IP Header {\n");
-        printf("\tversion: %d,\n", get_version());
+        printf("\tversion: %hhu,\n", get_version());
         printf("\theader length: %zu,\n", get_header_length());
-        printf("\ttype of service: %d,\n", get_type_of_service());
+        printf("\ttype of service: %hhu,\n", get_type_of_service());
         printf("\ttotal length: %zu,\n", get_total_length());
-        printf("\tidentification: %d,\n", get_identification());
+        printf("\tidentification: %hu,\n", get_identification());
         printf("\tdo not fragment: %s,\n", bool_to_string(get_do_not_fragment()));
         printf("\tmore fragment: %s,\n", bool_to_string(get_more_fragment()));
-        printf("\tfragment offset: %d,\n", get_fragment_offset());
-        printf("\ttime to live: %d,\n", get_time_to_live());
-        printf("\tprotocol: %d,\n", get_protocol());
+        printf("\tfragment offset: %hu,\n", get_fragment_offset());
+        printf("\ttime to live: %hhu,\n", get_time_to_live());
+        printf("\tprotocol: %hhu,\n", static_cast<uint8_t>(get_protocol()));
         printf("\theader checksum: %s,\n", bool_to_string(complement_checksum(into_slice()) == 0));
-        printf("\tsource ip: %s,\n", inet_ntoa(in_addr{get_source_ip()}));
-        printf("\tdestination ip: %s,\n", inet_ntoa(in_addr{get_destination_ip()}));
+        printf("\tsource ip: %s,\n", inet_ntoa(in_addr{get_src_ip()}));
+        printf("\tdestination ip: %s,\n", inet_ntoa(in_addr{get_dest_ip()}));
         printf("}\n");
     }
 }__attribute__((packed));
+
+
+struct IPV4PseudoHeader {
+private:
+    uint32_t src_ip;
+    uint32_t dest_ip;
+    uint8_t padding;
+    IPV4Protocol protocol;
+    uint16_t data_length;
+
+public:
+    IPV4PseudoHeader(uint32_t source_ip, uint32_t destination_ip,
+                     IPV4Protocol protocol, uint16_t data_length) {
+        set_src_ip(source_ip);
+        set_dest_ip(destination_ip);
+        padding = 0;
+        set_protocol(protocol);
+        set_data_length(data_length);
+    }
+
+    explicit IPV4PseudoHeader(const IPV4Header &other) {
+        set_src_ip(other.get_src_ip());
+        set_dest_ip(other.get_dest_ip());
+        padding = 0;
+        set_protocol(other.get_protocol());
+        set_data_length(other.get_total_length() - other.get_header_length());
+    }
+
+    Slice <uint8_t> into_slice() const {
+        return Slice<uint8_t>{reinterpret_cast<const uint8_t *>(this), sizeof(IPV4PseudoHeader)};
+    }
+
+    MutSlice <uint8_t> into_slice() {
+        return MutSlice<uint8_t>{reinterpret_cast<uint8_t *>(this), sizeof(IPV4PseudoHeader)};
+    }
+
+    uint32_t get_src_ip() const { return src_ip; }
+
+    void set_src_ip(uint32_t value) { src_ip = value; }
+
+    uint32_t get_dest_ip() const { return dest_ip; }
+
+    void set_dest_ip(uint32_t value) { dest_ip = value; }
+
+    IPV4Protocol get_protocol() const { return protocol; }
+
+    void set_protocol(IPV4Protocol value) { protocol = value; }
+
+    size_t get_data_length() const { return ntohs(data_length); }
+
+    void set_data_length(size_t value) {
+        if (value > std::numeric_limits<uint16_t>::max()) { cs120_abort("invalid total length!"); }
+        data_length = htons(value);
+    }
+}__attribute__((packed));
+
+
+cs120_static_inline std::tuple<IPV4Header *, MutSlice<uint8_t>, MutSlice<uint8_t>>
+ipv4_split(MutSlice<uint8_t> datagram) {
+    auto *header = datagram.buffer_cast<IPV4Header>();
+    if (header == nullptr) {
+        return std::make_tuple(nullptr, MutSlice<uint8_t>{}, MutSlice<uint8_t>{});
+    }
+    auto option = datagram[Range{sizeof(IPV4Header), header->get_header_length()}];
+    auto data = datagram[Range{header->get_header_length(), header->get_total_length()}];
+    return std::make_tuple(header, option, data);
+}
+
+
+cs120_static_inline std::tuple<const IPV4Header *, Slice<uint8_t>, Slice<uint8_t>>
+ipv4_split(Slice<uint8_t> datagram) {
+    auto *header = datagram.buffer_cast<IPV4Header>();
+    if (header == nullptr) {
+        return std::make_tuple(nullptr, Slice<uint8_t>{}, Slice<uint8_t>{});
+    }
+    auto option = datagram[Range{sizeof(IPV4Header), header->get_header_length()}];
+    auto data = datagram[Range{header->get_header_length(), header->get_total_length()}];
+    return std::make_tuple(header, option, data);
+}
 }
 
 

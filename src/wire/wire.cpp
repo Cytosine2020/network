@@ -7,17 +7,33 @@
 #include "pcap/pcap.h"
 
 
-namespace cs120 {
-uint16_t complement_checksum(Slice<uint8_t> buffer_) {
-    if (buffer_.size() % 2 != 0) { cs120_abort("length is not multiple of 2!"); }
+namespace {
+using namespace cs120;
 
+uint32_t sum(Slice<uint8_t> buffer_) {
     Slice<uint16_t> buffer{reinterpret_cast<const uint16_t *>(buffer_.begin()), buffer_.size() / 2};
 
     uint32_t sum = 0;
 
     for (auto &item: buffer) { sum += item; }
+    if (buffer_.size() % 2 != 0) { sum += buffer_[buffer_.size() & ~1]; }
 
+    return sum;
+}
+
+uint16_t complement(uint32_t sum) {
     return static_cast<uint16_t>(~((sum & 0xffffu) + (sum >> 16u)));
+}
+}
+
+
+namespace cs120 {
+uint16_t complement_checksum(Slice<uint8_t> buffer) {
+    return complement(sum(buffer));
+}
+
+uint16_t complement_checksum_add(Slice<uint8_t> a, Slice<uint8_t> b) {
+    return complement(sum(a) + sum(b));
 }
 
 uint32_t get_local_ip() {

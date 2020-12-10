@@ -46,23 +46,29 @@ size_t UDPServer::recv(MutSlice<uint8_t> data) {
         auto buffer = device->recv();
 
         auto *ip_header = buffer->buffer_cast<IPV4Header>();
+        if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
+            cs120_warn("invalid package!");
+            continue;
+        }
 
-        if (ip_header == nullptr ||
-            ip_header->get_protocol() != IPV4Header::UDP ||
-            ip_header->get_source_ip() != dest_ip ||
-            ip_header->get_destination_ip() != src_ip) { continue; }
+        if (ip_header->get_protocol() != IPV4Protocol::UDP ||
+                ip_header->get_src_ip() != dest_ip ||
+                ip_header->get_dest_ip() != src_ip) { continue; }
 
         auto ip_data = (*buffer)[Range{ip_header->get_header_length(),
                                        ip_header->get_total_length()}];
 
-        auto *udp_header = ip_data.buffer_cast<UDPHeader>();
+        IPV4PseudoHeader pseudo_header{*ip_header};
 
-        if (udp_header == nullptr ||
-            udp_header->get_source_port() != dest_port ||
-            udp_header->get_destination_port() != src_port) { continue; }
+        auto [udp_header, udp_data] = udp_split(ip_data);
+        uint16_t checksum = complement_checksum_add(pseudo_header.into_slice(), ip_data);
+        if (udp_header == nullptr || !udp_header->check_checksum(checksum)) {
+            cs120_warn("invalid package!");
+            continue;
+        }
 
-        auto udp_data = ip_data[Range{udp_header->get_header_length(),
-                                      udp_header->get_total_length()}];
+        if (udp_header->get_src_port() != dest_port ||
+                udp_header->get_dest_port() != src_port) { continue; }
 
         if (udp_data.size() > data.size()) {
             data.copy_from_slice(udp_data[Range{0, data.size()}]);

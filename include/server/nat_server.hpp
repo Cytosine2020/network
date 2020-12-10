@@ -18,107 +18,19 @@
 namespace cs120 {
 class NatServer {
 private:
-    static void *nat_lan_to_wan(void *args_);
-
-    static void *nat_wan_to_lan(void *args_);
-
-    static uint16_t get_src_port_from_ip_datagram(MutSlice<uint8_t> datagram) {
-        auto *ip_header = datagram.buffer_cast<IPV4Header>();
-        if (ip_header == nullptr) { return 0; }
-        auto ip_data = datagram[Range{ip_header->get_header_length(),
-                                      ip_header->get_total_length()}];
-
-        switch (ip_header->get_protocol()) {
-            case IPV4Header::ICMP: {
-                auto *icmp_header = ip_data.buffer_cast<ICMPHeader>();
-                if (icmp_header == nullptr) { return 0; }
-                return icmp_header->get_identification();
-            }
-            case IPV4Header::UDP: {
-                auto *udp_header = ip_data.buffer_cast<UDPHeader>();
-                if (udp_header == nullptr) { return 0; }
-                return udp_header->get_source_port();
-            }
-            default:
-                return 0;
-        }
+    static void *nat_lan_to_wan(void *args) {
+        reinterpret_cast<NatServer *>(args)->nat_lan_to_wan();
+        return nullptr;
     }
 
-    static void set_src_port_from_ip_datagram(MutSlice<uint8_t> datagram, uint16_t port) {
-        auto *ip_header = datagram.buffer_cast<IPV4Header>();
-        if (ip_header == nullptr) { return; }
-        auto ip_data = datagram[Range{ip_header->get_header_length(),
-                                      ip_header->get_total_length()}];
-
-        switch (ip_header->get_protocol()) {
-            case IPV4Header::ICMP: {
-                auto *icmp_header = ip_data.buffer_cast<ICMPHeader>();
-                if (icmp_header == nullptr) { return; }
-                icmp_header->set_identification(port);
-                icmp_header->set_checksum(0);
-                icmp_header->set_checksum(complement_checksum(ip_data));
-                return;
-            }
-            case IPV4Header::UDP: {
-                auto *udp_header = ip_data.buffer_cast<UDPHeader>();
-                if (udp_header == nullptr) { return; }
-                udp_header->set_source_port(port);
-                udp_header->set_checksum(0);
-                return;
-            }
-            default:
-                return;
-        }
+    static void *nat_wan_to_lan(void *args) {
+        reinterpret_cast<NatServer *>(args)->nat_wan_to_lan();
+        return nullptr;
     }
 
-    static uint16_t get_dest_port_from_ip_datagram(MutSlice<uint8_t> datagram) {
-        auto *ip_header = datagram.buffer_cast<IPV4Header>();
-        if (ip_header == nullptr) { return 0; }
-        auto ip_data = datagram[Range{ip_header->get_header_length(),
-                                      ip_header->get_total_length()}];
+    void nat_lan_to_wan();
 
-        switch (ip_header->get_protocol()) {
-            case IPV4Header::ICMP: {
-                auto *icmp_header = ip_data.buffer_cast<ICMPHeader>();
-                if (icmp_header == nullptr) { return 0; }
-                return icmp_header->get_identification();
-            }
-            case IPV4Header::UDP: {
-                auto *udp_header = ip_data.buffer_cast<UDPHeader>();
-                if (udp_header == nullptr) { return 0; }
-                return udp_header->get_destination_port();
-            }
-            default:
-                return 0;
-        }
-    }
-
-    static void set_dest_port_from_ip_datagram(MutSlice<uint8_t> datagram, uint16_t port) {
-        auto *ip_header = datagram.buffer_cast<IPV4Header>();
-        if (ip_header == nullptr) { return; }
-        auto ip_data = datagram[Range{ip_header->get_header_length(),
-                                      ip_header->get_total_length()}];
-
-        switch (ip_header->get_protocol()) {
-            case IPV4Header::ICMP: {
-                auto *icmp_header = ip_data.buffer_cast<ICMPHeader>();
-                if (icmp_header == nullptr) { return; }
-                icmp_header->set_identification(port);
-                icmp_header->set_checksum(0);
-                icmp_header->set_checksum(complement_checksum(ip_data));
-                return;
-            }
-            case IPV4Header::UDP: {
-                auto *udp_header = ip_data.buffer_cast<UDPHeader>();
-                if (udp_header == nullptr) { return; }
-                udp_header->set_destination_port(port);
-                udp_header->set_checksum(0);
-                return;
-            }
-            default:
-                return;
-        }
-    }
+    void nat_wan_to_lan();
 
     pthread_t lan_to_wan, wan_to_lan;
     std::unique_ptr<BaseSocket> lan, wan;
@@ -128,7 +40,7 @@ private:
     uint32_t ip_addr;
 
 public:
-    static const uint16_t NAT_PORTS_BASE = 45678;
+    static const uint16_t NAT_PORTS_BASE = 50000;
     static const uint16_t NAT_PORTS_SIZE = 1024;
 
     static uint32_t get_nat_table_ip(uint64_t value) {

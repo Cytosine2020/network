@@ -19,6 +19,8 @@ namespace cs120 {
 /// return : checksum in network byte order
 uint16_t complement_checksum(Slice<uint8_t> buffer);
 
+uint16_t complement_checksum_add(Slice<uint8_t> a, Slice<uint8_t> b);
+
 uint32_t get_local_ip();
 
 std::pair<uint32_t, uint16_t> parse_ip_address(const char *str);

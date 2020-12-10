@@ -30,23 +30,30 @@ add_executable(udp
         src/device/raw_socket.cpp src/server/udp_server.cpp)
 target_link_libraries(udp pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
+add_executable(tcp
+        src/tcp.cpp src/wire/wire.cpp src/queue.cpp src/athernet.cpp
+        src/device/raw_socket.cpp src/server/tcp_server.cpp)
+target_link_libraries(tcp pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
+
 add_executable(nat
         src/nat.cpp src/wire/wire.cpp src/queue.cpp src/athernet.cpp
         src/device/raw_socket.cpp src/device/unix_socket.cpp src/device/athernet_socket.cpp
         src/server/nat_server.cpp src/server/udp_server.cpp src/server/icmp_server.cpp)
 target_link_libraries(nat pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
-if (APPLE)
-    add_custom_command(
-            TARGET nat
-            POST_BUILD
-            COMMAND chmod 700 nat
-            VERBATIM)
-elseif (UNIX)
-    add_custom_command(
-            TARGET nat
-            POST_BUILD
-            COMMAND chmod 700 nat && sudo setcap cap_net_admin,cap_net_raw=eip nat
-            COMMENT "Grant access for raw socket"
-            VERBATIM)
-endif ()
+foreach (executable udp tcp nat)
+    if (APPLE)
+        add_custom_command(
+                TARGET ${executable}
+                POST_BUILD
+                COMMAND chmod 700 ${executable}
+                VERBATIM)
+    elseif (UNIX)
+        add_custom_command(
+                TARGET ${executable}
+                POST_BUILD
+                COMMAND chmod 700 ${executable} && sudo setcap cap_net_admin,cap_net_raw=eip ${executable}
+                COMMENT "Grant access for ${executable}"
+                VERBATIM)
+    endif ()
+endforeach (executable)

@@ -10,15 +10,14 @@
 
 
 namespace cs120 {
-struct ICMPHeader {
-public:
-    enum Type : uint8_t {
-        EchoReply = 0,
-        EchoRequest = 8,
-    };
+enum class ICMPType : uint8_t {
+    EchoReply = 0,
+    EchoRequest = 8,
+};
 
+struct ICMPHeader {
 private:
-    Type type;
+    ICMPType type;
     uint8_t code;
     uint16_t checksum;
     uint16_t identification;
@@ -29,7 +28,7 @@ public:
         return IPV4Header::max_payload(mtu) - sizeof(ICMPHeader);
     }
 
-    ICMPHeader(Type type, uint16_t identification, uint16_t sequence) {
+    ICMPHeader(ICMPType type, uint16_t identification, uint16_t sequence) {
         set_type(type);
         set_code(0);
         set_checksum(0);
@@ -38,11 +37,11 @@ public:
     }
 
     static size_t generate(MutSlice<uint8_t> frame, uint16_t identifier,
-                           uint32_t src_ip, uint32_t dest_ip, Type type,
+                           uint32_t src_ip, uint32_t dest_ip, ICMPType type,
                            uint16_t identification, uint16_t sequence, Slice<uint8_t> data) {
         size_t icmp_size = sizeof(ICMPHeader) + data.size();
 
-        size_t ip_header_size = IPV4Header::generate(frame, identifier, IPV4Header::ICMP,
+        size_t ip_header_size = IPV4Header::generate(frame, identifier, IPV4Protocol::ICMP,
                                                      src_ip, dest_ip, icmp_size);
 
         if (ip_header_size == 0) { return 0; }
@@ -72,9 +71,9 @@ public:
         return const_cast<ICMPHeader *>(from_slice(Slice<uint8_t>{data}));
     }
 
-    uint8_t get_type() const { return type; }
+    ICMPType get_type() const { return type; }
 
-    void set_type(Type value) { type = value; }
+    void set_type(ICMPType value) { type = value; }
 
     uint8_t get_code() const { return code; }
 
@@ -94,11 +93,10 @@ public:
 
     void format() const {
         printf("ICMP Header {\n");
-        printf("\ttype: %d,\n", get_type());
-        printf("\tcode: %d,\n", get_code());
-        printf("\tidentifier: %d,\n", get_identification());
-        printf("\tsequence: %d,\n", get_sequence());
-//    printf("\tchecksum: %d,\n", udphdr_get_check(object));
+        printf("\ttype: %hhu,\n", static_cast<uint8_t>(get_type()));
+        printf("\tcode: %hhu,\n", get_code());
+        printf("\tidentifier: %hu,\n", get_identification());
+        printf("\tsequence: %hu,\n", get_sequence());
         printf("}\n");
     }
 }__attribute__((packed));
