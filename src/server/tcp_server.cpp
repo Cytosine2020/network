@@ -299,7 +299,6 @@ ssize_t TCPServer::recv(cs120::MutSlice<uint8_t> data) {
 void TCPServer::close() {
     {
         auto send = device->send();
-
         TCPHeader::generate_fin((*send)[Range{}], identifier++, src_ip, dest_ip,
                                 src_port, dest_port, src_seq++, dest_seq,
                                 false, false, false, false, true, false,
@@ -310,7 +309,6 @@ void TCPServer::close() {
 
     for (;;) {
         auto buffer = device->recv();
-
         auto[ip_header, ip_option, ip_data] = ipv4_split((*buffer)[Range{}]);
         if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
             cs120_warn("invalid package!");
@@ -348,9 +346,9 @@ void TCPServer::close() {
 
                             {
                                 auto send = device->send();
-
-                                TCPHeader::generate_ack((*send)[Range{}], identifier++, src_ip, dest_ip,
-                                                        src_port, dest_port, src_seq, dest_seq,
+                                TCPHeader::generate_ack((*send)[Range{}], identifier++,
+                                                        src_ip, dest_ip, src_port, dest_port,
+                                                        src_seq, dest_seq,
                                                         false, false, false, false, false,
                                                         window, Slice<uint8_t>{});
                             }

@@ -36,7 +36,7 @@ void ICMPServer::icmp_receiver() {
                     continue;
                 }
 
-                auto send = ping_queue.try_send();
+                auto send = send_queue.try_send();
                 if (!send.empty()) {
                     auto range = Range{0, ip_header->get_total_length()};
                     (*send)[range].copy_from_slice((*buffer)[range]);
@@ -64,7 +64,13 @@ void ICMPServer::icmp_receiver() {
 
 
 ICMPServer::ICMPServer(std::unique_ptr<BaseSocket> device, uint16_t identification) :
-        device{std::move(device)}, receiver{}, ping_queue{64}, identification{identification} {
+        device{std::move(device)}, receiver{}, send_queue{nullptr}, recv_queue{nullptr},
+        identification{identification} {
+    auto[ping_sender, ping_receiver] = MPSCQueue<PingBuffer>::channel(64);
+
+    send_queue = std::move(ping_sender);
+    recv_queue = std::move(ping_receiver);
+
     pthread_create(&receiver, nullptr, icmp_receiver, this);
 }
 
@@ -72,7 +78,7 @@ bool ICMPServer::ping(uint16_t seq, uint32_t src_ip, uint32_t dest_ip,
                       uint16_t src_port, uint16_t dest_port) {
     using namespace std::literals;
 
-    while (!ping_queue.try_recv().empty()) {}
+    while (!recv_queue.try_recv().empty()) {}
 
     ICMPData send_port{src_port, dest_port};
     Slice<uint8_t> data{reinterpret_cast<uint8_t *>(&send_port), sizeof(ICMPData)};
@@ -88,7 +94,7 @@ bool ICMPServer::ping(uint16_t seq, uint32_t src_ip, uint32_t dest_ip,
     auto deadline = std::chrono::system_clock::now() + 1s;
 
     for (;;) {
-        auto recv = ping_queue.recv_deadline(deadline);
+        auto recv = recv_queue.recv_deadline(deadline);
         if (recv.empty()) { return false; }
 
         auto[ip_header, ip_option, ip_data] = ipv4_split((*recv)[Range{}]);

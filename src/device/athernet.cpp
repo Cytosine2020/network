@@ -8,12 +8,12 @@
 
 namespace cs120 {
 void *unix_socket_sender(void *args_) {
-    auto *args = static_cast<unix_socket_args *>(args_);
+    auto *args = static_cast<unix_socket_send_args *>(args_);
 
     Array<uint8_t> buffer{ATHERNET_MTU};
 
     for (;;) {
-        auto slot = args->queue->recv();
+        auto slot = args->queue.recv();
         auto *ip_header = slot->buffer_cast<IPV4Header>();
         if (ip_header == nullptr) {
             cs120_warn("invalid package!");
@@ -37,7 +37,7 @@ void *unix_socket_sender(void *args_) {
 }
 
 void *unix_socket_receiver(void *args_) {
-    auto *args = static_cast<unix_socket_args *>(args_);
+    auto *args = static_cast<unix_socket_recv_args *>(args_);
 
     Array<uint8_t> buffer{ATHERNET_MTU};
 
@@ -46,7 +46,7 @@ void *unix_socket_receiver(void *args_) {
         if (len == 0) { return nullptr; }
         if (len != ATHERNET_MTU) { cs120_abort("recv error"); }
 
-        auto slot = args->queue->try_send();
+        auto slot = args->queue.try_send();
         if (slot->empty()) {
             cs120_warn("package loss!");
         } else {

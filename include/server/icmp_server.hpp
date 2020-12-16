@@ -13,10 +13,12 @@ namespace cs120 {
 class ICMPServer {
 private:
     static constexpr size_t BUFFER_SIZE = 64;
+    using PingBuffer = Buffer<uint8_t, BUFFER_SIZE>;
 
     std::unique_ptr<BaseSocket> device;
     pthread_t receiver;
-    SPSCQueue<Buffer<uint8_t, BUFFER_SIZE>> ping_queue;
+    MPSCSender<PingBuffer> send_queue;
+    MPSCReceiver<PingBuffer> recv_queue;
     uint16_t identification;
 
     static void *icmp_receiver(void *args) {

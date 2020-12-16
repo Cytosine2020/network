@@ -16,7 +16,7 @@ using namespace cs120;
 struct pcap_callback_args {
     pcap_t *pcap_handle;
     struct bpf_program filter;
-    SPSCQueue<PacketBuffer> *queue;
+    MPSCSender<PacketBuffer> queue;
     uint32_t ip_addr;
 };
 
@@ -49,7 +49,7 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
     if (ip_header->get_src_ip() == args->ip_addr &&
         ip_header->get_dest_ip() != args->ip_addr) { return; }
 
-    auto slot = args->queue->try_send();
+    auto slot = args->queue.try_send();
     if (slot->empty()) {
         cs120_warn("package loss!");
     } else {
@@ -72,14 +72,14 @@ void *raw_socket_receiver(void *args_) {
 
 struct raw_socket_sender_args {
     libnet_t *context;
-    SPSCQueue<PacketBuffer> *queue;
+    MPSCReceiver<PacketBuffer> queue;
 };
 
 void *raw_socket_sender(void *args_) {
     auto *args = reinterpret_cast<raw_socket_sender_args *>(args_);
 
     for (;;) {
-        auto buffer = args->queue->recv();
+        auto buffer = args->queue.recv();
 
         auto[ip_header, ip_option, ip_data] = ipv4_split((*buffer)[Range{}]);
         if (ip_header == nullptr) {
@@ -112,7 +112,7 @@ void *raw_socket_sender(void *args_) {
 
 namespace cs120 {
 RawSocket::RawSocket(size_t size, uint32_t ip_addr) :
-        receiver{}, sender{}, receive_queue{nullptr}, send_queue{nullptr} {
+        receiver{}, sender{}, recv_queue{nullptr}, send_queue{nullptr} {
     char pcap_error[PCAP_ERRBUF_SIZE]{};
     pcap_if_t *device = nullptr;
 
@@ -128,19 +128,22 @@ RawSocket::RawSocket(size_t size, uint32_t ip_addr) :
 
     pcap_freealldevs(device);
 
-    receive_queue = new SPSCQueue<PacketBuffer>{size};
-    send_queue = new SPSCQueue<PacketBuffer>{size};
+    auto[recv_sender, recv_receiver] = MPSCQueue<PacketBuffer>::channel(size);
+    auto[send_sender, send_receiver] = MPSCQueue<PacketBuffer>::channel(size);
+
+    recv_queue = std::move(recv_receiver);
+    send_queue = std::move(send_sender);
 
     auto *recv_args = new pcap_callback_args{
             .pcap_handle = pcap_handle,
             .filter = (struct bpf_program) {},
-            .queue = receive_queue,
+            .queue = std::move(recv_sender),
             .ip_addr = ip_addr,
     };
 
     auto *send_args = new raw_socket_sender_args{
             .context = context,
-            .queue = send_queue,
+            .queue = std::move(send_receiver),
     };
 
     if (pcap_compile(pcap_handle, &recv_args->filter, "icmp or udp or tcp", 0,

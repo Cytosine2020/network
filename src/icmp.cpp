@@ -13,17 +13,21 @@ using namespace cs120;
 int main(int argc, char **argv) {
     if (argc != 4) { cs120_abort("accept 3 arguments"); }
 
+    auto device = argv[1];
+    auto src = argv[2];
+    auto dest = argv[3];
+
     std::unique_ptr<BaseSocket> sock = nullptr;
-    if (strcmp(argv[1], "-a") == 0) {
+    if (strcmp(device, "-a") == 0) {
         sock = std::unique_ptr<BaseSocket>{new UnixSocket{64}};
-    } else if (strcmp(argv[1], "-e") == 0) {
+    } else if (strcmp(device, "-e") == 0) {
         sock = std::unique_ptr<BaseSocket>{new AthernetSocket{64}};
     } else {
         cs120_abort("unknown command");
     }
 
-    auto[src_ip, src_port] = parse_ip_address(argv[2]);
-    auto[dest_ip, dest_port] = parse_ip_address(argv[3]);
+    auto[src_ip, src_port] = parse_ip_address(src);
+    auto[dest_ip, dest_port] = parse_ip_address(dest);
 
     printf("local %s:%d\n", inet_ntoa(in_addr{src_ip}), src_port);
     printf("remote %s:%d\n", inet_ntoa(in_addr{dest_ip}), dest_port);

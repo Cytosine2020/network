@@ -8,26 +8,27 @@
 #include <mutex>
 #include <condition_variable>
 #include <chrono>
+#include <memory>
 
 #include "utility.hpp"
 
 
 namespace cs120 {
 template<typename T>
-class SPSCQueue;
+class MPSCQueue;
 
 template<typename T>
-class SPSCQueueSenderSlotGuard {
+class MPSCSenderSlotGuard {
 private:
     T *inner;
-    SPSCQueue<T> &queue;
+    MPSCQueue<T> &queue;
 
 public:
-    SPSCQueueSenderSlotGuard(T *inner, SPSCQueue<T> &queue) : inner{inner}, queue{queue} {}
+    MPSCSenderSlotGuard(T *inner, MPSCQueue<T> &queue) : inner{inner}, queue{queue} {}
 
-    SPSCQueueSenderSlotGuard(const SPSCQueueSenderSlotGuard &other) = delete;
+    MPSCSenderSlotGuard(const MPSCSenderSlotGuard &other) = delete;
 
-    SPSCQueueSenderSlotGuard &operator=(const SPSCQueueSenderSlotGuard &other) = delete;
+    MPSCSenderSlotGuard &operator=(const MPSCSenderSlotGuard &other) = delete;
 
     bool empty() const { return inner == nullptr; }
 
@@ -35,21 +36,21 @@ public:
 
     T *operator->() { return inner; }
 
-    ~SPSCQueueSenderSlotGuard();
+    ~MPSCSenderSlotGuard();
 };
 
 template<typename T>
-class SPSCQueueReceiverSlotGuard {
+class MPSCReceiverSlotGuard {
 private:
     T *inner;
-    SPSCQueue<T> &queue;
+    MPSCQueue<T> &queue;
 
 public:
-    SPSCQueueReceiverSlotGuard(T *inner, SPSCQueue<T> &queue) : inner{inner}, queue{queue} {}
+    MPSCReceiverSlotGuard(T *inner, MPSCQueue<T> &queue) : inner{inner}, queue{queue} {}
 
-    SPSCQueueReceiverSlotGuard(const SPSCQueueSenderSlotGuard<T> &other) = delete;
+    MPSCReceiverSlotGuard(const MPSCSenderSlotGuard<T> &other) = delete;
 
-    SPSCQueueReceiverSlotGuard &operator=(const SPSCQueueSenderSlotGuard<T> &other) = delete;
+    MPSCReceiverSlotGuard &operator=(const MPSCSenderSlotGuard<T> &other) = delete;
 
     bool empty() const { return inner == nullptr; }
 
@@ -57,12 +58,55 @@ public:
 
     T *operator->() { return inner; }
 
-    ~SPSCQueueReceiverSlotGuard();
+    ~MPSCReceiverSlotGuard();
 };
 
 
 template<typename T>
-class SPSCQueue {
+class MPSCSender {
+private:
+    std::shared_ptr<MPSCQueue<T>> queue;
+
+public:
+    MPSCSender(std::shared_ptr<MPSCQueue<T>> queue) : queue{queue} {}
+
+    MPSCSender(MPSCSender &&other) noexcept = default;
+
+    MPSCSender &operator=(MPSCSender &&other) noexcept = default;
+
+    MPSCSenderSlotGuard<T> try_send();
+
+    MPSCSenderSlotGuard<T> send();
+
+    ~MPSCSender() = default;
+};
+
+template<typename T>
+class MPSCReceiver {
+private:
+    std::shared_ptr<MPSCQueue<T>> queue;
+
+public:
+    MPSCReceiver(std::shared_ptr<MPSCQueue<T>> queue) : queue{queue} {}
+
+    MPSCReceiver(MPSCReceiver &&other) noexcept = default;
+
+    MPSCReceiver &operator=(MPSCReceiver &&other) noexcept = default;
+
+    MPSCReceiverSlotGuard<T> try_recv();
+
+    MPSCReceiverSlotGuard<T> recv();
+
+    template<typename ClockT, typename DurationT>
+    MPSCReceiverSlotGuard<T>
+    recv_deadline(const std::chrono::time_point<ClockT, DurationT> &time);
+
+    ~MPSCReceiver() = default;
+};
+
+
+template<typename T>
+class MPSCQueue {
 private:
     std::mutex lock, sender_lock, receiver_lock;
     std::condition_variable empty, full;
@@ -72,25 +116,29 @@ private:
 
     size_t index_increase(size_t index) const { return index + 1 >= size ? 0 : index + 1; }
 
+    MPSCQueue(size_t size) : lock{}, empty{}, full{}, inner{size}, size{size}, start{0}, end{0} {}
 public:
-    SPSCQueue(size_t size) : lock{}, empty{}, full{}, inner{size}, size{size}, start{0}, end{0} {}
+    static std::pair<MPSCSender<T>, MPSCReceiver<T>> channel(size_t size) {
+        std::shared_ptr<MPSCQueue> queue{new MPSCQueue{size}};
+        return std::make_pair(MPSCSender<T>{queue}, MPSCReceiver<T>{queue});
+    }
 
-    SPSCQueue(SPSCQueue &other) = delete;
+    MPSCQueue(MPSCQueue &other) = delete;
 
-    SPSCQueue &operator=(const SPSCQueue &other) = delete;
+    MPSCQueue &operator=(const MPSCQueue &other) = delete;
 
-    SPSCQueueSenderSlotGuard<T> try_send() {
+    MPSCSenderSlotGuard<T> try_send() {
         sender_lock.lock();
 
         if (index_increase(end) == start.load()) {
             sender_lock.unlock();
-            return SPSCQueueSenderSlotGuard<T>{nullptr, *this};
+            return MPSCSenderSlotGuard<T>{nullptr, *this};
         } else {
-            return SPSCQueueSenderSlotGuard<T>{&inner[end.load()], *this};
+            return MPSCSenderSlotGuard<T>{&inner[end.load()], *this};
         }
     }
 
-    SPSCQueueSenderSlotGuard<T> send() {
+    MPSCSenderSlotGuard<T> send() {
         sender_lock.lock();
 
         if (index_increase(end.load()) == start.load()) {
@@ -101,7 +149,7 @@ public:
             }
         }
 
-        return SPSCQueueSenderSlotGuard{&inner[end.load()], *this};
+        return MPSCSenderSlotGuard{&inner[end.load()], *this};
     }
 
     void commit() {
@@ -112,18 +160,18 @@ public:
         empty.notify_all();
     }
 
-    SPSCQueueReceiverSlotGuard<T> try_recv() {
+    MPSCReceiverSlotGuard<T> try_recv() {
         receiver_lock.lock();
 
         if (start.load() == end.load()) {
             receiver_lock.unlock();
-            return SPSCQueueReceiverSlotGuard<T>{nullptr, *this};
+            return MPSCReceiverSlotGuard<T>{nullptr, *this};
         } else {
-            return SPSCQueueReceiverSlotGuard<T>{&inner[start.load()], *this};
+            return MPSCReceiverSlotGuard<T>{&inner[start.load()], *this};
         }
     }
 
-    SPSCQueueReceiverSlotGuard<T> recv() {
+    MPSCReceiverSlotGuard<T> recv() {
         receiver_lock.lock();
 
         if (start.load() == end.load()) {
@@ -134,13 +182,12 @@ public:
             }
         }
 
-        return SPSCQueueReceiverSlotGuard<T>{&inner[start.load()], *this};
+        return MPSCReceiverSlotGuard<T>{&inner[start.load()], *this};
     }
 
     template<typename ClockT, typename DurationT>
-    SPSCQueueReceiverSlotGuard<T> recv_deadline(
-            const std::chrono::time_point<ClockT, DurationT> &time
-    ) {
+    MPSCReceiverSlotGuard<T>
+    recv_deadline(const std::chrono::time_point<ClockT, DurationT> &time) {
         receiver_lock.lock();
 
         if (start.load() == end.load()) {
@@ -153,11 +200,11 @@ public:
             }
         }
 
-        return SPSCQueueReceiverSlotGuard<T>{&inner[start.load()], *this};
+        return MPSCReceiverSlotGuard<T>{&inner[start.load()], *this};
 
         timeout:
         receiver_lock.unlock();
-        return SPSCQueueReceiverSlotGuard<T>{nullptr, *this};
+        return MPSCReceiverSlotGuard<T>{nullptr, *this};
     }
 
     void claim() {
@@ -168,17 +215,36 @@ public:
         full.notify_all();
     }
 
-    ~SPSCQueue() = default;
+    ~MPSCQueue() = default;
 };
 
 template<typename T>
-inline SPSCQueueSenderSlotGuard<T>::~SPSCQueueSenderSlotGuard() {
+MPSCSenderSlotGuard<T>::~MPSCSenderSlotGuard() {
     if (!empty()) { queue.commit(); }
 }
 
 template<typename T>
-inline SPSCQueueReceiverSlotGuard<T>::~SPSCQueueReceiverSlotGuard() {
+MPSCReceiverSlotGuard<T>::~MPSCReceiverSlotGuard() {
     if (!empty()) { queue.claim(); }
+}
+
+template<typename T>
+MPSCSenderSlotGuard<T> MPSCSender<T>::try_send() { return queue->try_send(); }
+
+template<typename T>
+MPSCSenderSlotGuard<T> MPSCSender<T>::send() { return queue->send(); }
+
+template<typename T>
+MPSCReceiverSlotGuard<T> MPSCReceiver<T>::try_recv() { return queue->try_recv(); }
+
+template<typename T>
+MPSCReceiverSlotGuard<T> MPSCReceiver<T>::recv() { return queue->recv(); }
+
+template<typename T>
+template<typename ClockT, typename DurationT>
+MPSCReceiverSlotGuard<T>
+MPSCReceiver<T>::recv_deadline(const std::chrono::time_point<ClockT, DurationT> &time) {
+    return queue->recv_deadline(time);
 }
 }
 

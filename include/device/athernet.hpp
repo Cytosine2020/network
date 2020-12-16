@@ -13,9 +13,14 @@ namespace cs120 {
 constexpr const char *ATHERNET_SOCKET = "/tmp/athernet.socket";
 constexpr size_t ATHERNET_MTU = 256;
 
-struct unix_socket_args {
+struct unix_socket_recv_args {
     int athernet;
-    SPSCQueue<PacketBuffer> *queue;
+    MPSCSender<PacketBuffer> queue;
+};
+
+struct unix_socket_send_args {
+    int athernet;
+    MPSCReceiver<PacketBuffer> queue;
 };
 
 void *unix_socket_sender(void *args_);

@@ -16,7 +16,8 @@ namespace cs120 {
 class RawSocket : public BaseSocket {
 private:
     pthread_t receiver, sender;
-    SPSCQueue<PacketBuffer> *receive_queue, *send_queue;
+    MPSCReceiver<PacketBuffer> recv_queue;
+    MPSCSender<PacketBuffer> send_queue;
 
 public:
     RawSocket(size_t size, uint32_t ip_addr);
@@ -27,13 +28,13 @@ public:
 
     size_t get_mtu() final { return 1500; }
 
-    SPSCQueueSenderSlotGuard<PacketBuffer> try_send() final { return send_queue->try_send(); }
+    MPSCSenderSlotGuard<PacketBuffer> try_send() final { return send_queue.try_send(); }
 
-    SPSCQueueSenderSlotGuard<PacketBuffer> send() final { return send_queue->send(); }
+    MPSCSenderSlotGuard<PacketBuffer> send() final { return send_queue.send(); }
 
-    SPSCQueueReceiverSlotGuard<PacketBuffer> try_recv() final { return receive_queue->try_recv(); }
+    MPSCReceiverSlotGuard<PacketBuffer> try_recv() final { return recv_queue.try_recv(); }
 
-    SPSCQueueReceiverSlotGuard<PacketBuffer> recv() final { return receive_queue->recv(); }
+    MPSCReceiverSlotGuard<PacketBuffer> recv() final { return recv_queue.recv(); }
 
     ~RawSocket() override = default;
 };

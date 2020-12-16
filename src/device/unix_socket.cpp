@@ -10,9 +10,12 @@
 
 namespace cs120 {
 UnixSocket::UnixSocket(size_t size) :
-        receiver{}, sender{}, receive_queue{nullptr}, send_queue{nullptr}, athernet{-1} {
-    receive_queue = new SPSCQueue<PacketBuffer>{size};
-    send_queue = new SPSCQueue<PacketBuffer>{size};
+        receiver{}, sender{}, recv_queue{nullptr}, send_queue{nullptr}, athernet{-1} {
+    auto[recv_sender, recv_receiver] = MPSCQueue<PacketBuffer>::channel(size);
+    auto[send_sender, send_receiver] = MPSCQueue<PacketBuffer>::channel(size);
+
+    recv_queue = std::move(recv_receiver);
+    send_queue = std::move(send_sender);
 
     athernet = socket(AF_UNIX, SOCK_STREAM, 0);
 
@@ -27,14 +30,14 @@ UnixSocket::UnixSocket(size_t size) :
 
     if (unlink(ATHERNET_SOCKET) != 0) { cs120_abort("unlink error"); }
 
-    auto *receiver_args = new unix_socket_args{
+    auto *receiver_args = new unix_socket_recv_args{
             .athernet = athernet,
-            .queue = receive_queue,
+            .queue = std::move(recv_sender),
     };
 
-    auto *sender_args = new unix_socket_args{
+    auto *sender_args = new unix_socket_send_args{
             .athernet = athernet,
-            .queue = send_queue,
+            .queue = std::move(send_receiver),
     };
 
     pthread_create(&receiver, nullptr, unix_socket_receiver, receiver_args);
