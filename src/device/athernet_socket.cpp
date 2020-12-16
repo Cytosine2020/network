@@ -4,14 +4,14 @@
 #include <sys/socket.h>
 
 #include "utility.hpp"
-#include "athernet.hpp"
+#include "device/athernet.hpp"
 
 
 namespace cs120 {
 AthernetSocket::AthernetSocket(size_t size) :
         receiver{}, sender{}, receive_queue{nullptr}, send_queue{nullptr}, athernet{-1} {
-    receive_queue = new SPSCQueue{get_mtu(), size};
-    send_queue = new SPSCQueue{get_mtu(), size};
+    receive_queue = new SPSCQueue<PacketBuffer>{size};
+    send_queue = new SPSCQueue<PacketBuffer>{size};
 
     int sock = socket(AF_UNIX, SOCK_STREAM, 0);
     if (sock == -1) { cs120_abort("client socket error"); }

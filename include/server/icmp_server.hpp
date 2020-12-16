@@ -10,8 +10,34 @@
 
 
 namespace cs120 {
-void icmp_ping(std::unique_ptr<BaseSocket> sock, uint32_t src_ip, uint32_t dest_ip,
-               uint16_t src_port);
+class ICMPServer {
+private:
+    static constexpr size_t BUFFER_SIZE = 64;
+
+    std::unique_ptr<BaseSocket> device;
+    pthread_t receiver;
+    SPSCQueue<Buffer<uint8_t, BUFFER_SIZE>> ping_queue;
+    uint16_t identification;
+
+    static void *icmp_receiver(void *args) {
+        reinterpret_cast<ICMPServer *>(args)->icmp_receiver();
+        return nullptr;
+    }
+
+    void icmp_receiver();
+
+public:
+    explicit ICMPServer(std::unique_ptr<BaseSocket> device, uint16_t identification);
+
+    ICMPServer(ICMPServer &&other) noexcept = delete;
+
+    ICMPServer &operator=(ICMPServer &&other) noexcept = delete;
+
+    bool ping(uint16_t seq, uint32_t src_ip, uint32_t dest_ip,
+              uint16_t src_port, uint16_t dest_port);
+
+    ~ICMPServer() = default;
+};
 }
 
 

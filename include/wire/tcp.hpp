@@ -116,7 +116,7 @@ public:
     static size_t generate(MutSlice<uint8_t> frame, uint16_t identifier,
                            uint32_t src_ip, uint32_t dest_ip,
                            uint16_t src_port, uint16_t dest_port,
-                           uint32_t sequence,uint32_t ack_number,
+                           uint32_t sequence, uint32_t ack_number,
                            bool nonce_sum, bool cwr, bool ece,
                            bool urgent, bool ack, bool push, bool reset, bool sync, bool fin,
                            uint16_t window, Slice<uint8_t> data) {
@@ -137,9 +137,8 @@ public:
 
         tcp_frame[Range{sizeof(TCPHeader)}][Range{0, data.size()}].copy_from_slice(data);
 
-        IPV4PseudoHeader pseudo_header{*reinterpret_cast<IPV4Header *>(frame.begin())};
-
-        tcp_header->set_checksum(complement_checksum_add(pseudo_header.into_slice(), tcp_frame));
+        auto *ip_header = reinterpret_cast<IPV4Header *>(frame.begin());
+        tcp_header->set_checksum(complement_checksum(*ip_header, tcp_frame));
 
         return tcp_size;
     }
@@ -167,12 +166,12 @@ public:
     }
 
     static size_t generate_ack(MutSlice<uint8_t> frame, uint16_t identifier,
-                                    uint32_t src_ip, uint32_t dest_ip,
-                                    uint16_t src_port, uint16_t dest_port,
-                                    uint32_t sequence, uint32_t ack_number,
-                                    bool nonce_sum, bool cwr, bool ece,
-                                    bool urgent, bool push,
-                                    uint16_t window, Slice<uint8_t> data) {
+                               uint32_t src_ip, uint32_t dest_ip,
+                               uint16_t src_port, uint16_t dest_port,
+                               uint32_t sequence, uint32_t ack_number,
+                               bool nonce_sum, bool cwr, bool ece,
+                               bool urgent, bool push,
+                               uint16_t window, Slice<uint8_t> data) {
         return generate(frame, identifier, src_ip, dest_ip, src_port, dest_port,
                         sequence, ack_number, nonce_sum, cwr, ece,
                         urgent, true, push, false, false, false, window, data);
@@ -190,7 +189,7 @@ public:
                         ack, push, false, false, true, window, data);
     }
 
-    static size_t generate_reset(MutSlice<uint8_t> frame, uint16_t identifier,
+    static size_t generate_reset(MutSlice <uint8_t> frame, uint16_t identifier,
                                  uint32_t src_ip, uint32_t dest_ip,
                                  uint16_t src_port, uint16_t dest_port,
                                  uint32_t sequence, uint32_t ack_number,

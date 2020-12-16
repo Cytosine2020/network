@@ -38,7 +38,7 @@ void NatServer::nat_lan_to_wan() {
     for (;;) {
         auto receive = lan->recv();
 
-        auto[ip_header, ip_option, ip_data] = ipv4_split(*receive);
+        auto[ip_header, ip_option, ip_data] = ipv4_split((*receive)[Range{}]);
         if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
             cs120_warn("invalid package!");
             continue;
@@ -61,13 +61,26 @@ void NatServer::nat_lan_to_wan() {
                     cs120_warn("invalid package!");
                     continue;
                 }
-                lan_port = icmp_header->get_identification();
+
+                auto icmp_data = ip_data[Range{sizeof(ICMPHeader)}];
+                if (icmp_data.size() < sizeof(ICMPData)) { continue; }
+                auto *recv_port = reinterpret_cast<struct ICMPData *>(icmp_data.begin());
+
+                switch (icmp_header->get_type()) {
+                    case ICMPType::EchoReply:
+                        lan_port = recv_port->dest_port;
+                        break;
+                    case ICMPType::EchoRequest:
+                        lan_port = recv_port->src_port;
+                        break;
+                    default:
+                        continue;
+                }
                 break;
             }
             case IPV4Protocol::UDP: {
-                IPV4PseudoHeader pseudo{*ip_header};
                 auto *udp_header = ip_data.buffer_cast<UDPHeader>();
-                uint16_t checksum = complement_checksum_add(pseudo.into_slice(), ip_data);
+                uint16_t checksum = complement_checksum(*ip_header, ip_data);
                 if (udp_header == nullptr || !udp_header->check_checksum(checksum)) {
                     cs120_warn("invalid package!");
                     continue;
@@ -116,18 +129,29 @@ void NatServer::nat_lan_to_wan() {
         switch (ip_header->get_protocol()) {
             case IPV4Protocol::ICMP: {
                 auto *icmp_header = reinterpret_cast<ICMPHeader *>(ip_data.begin());
-                icmp_header->set_identification(wan_port);
+                auto icmp_data = ip_data[Range{sizeof(ICMPHeader)}];
+                auto *recv_port = reinterpret_cast<struct ICMPData *>(icmp_data.begin());
+
+                switch (icmp_header->get_type()) {
+                    case ICMPType::EchoReply:
+                        recv_port->dest_port = wan_port;
+                        break;
+                    case ICMPType::EchoRequest:
+                        recv_port->src_port = wan_port;
+                        break;
+                    default:
+                        continue;
+                }
+
                 icmp_header->set_checksum(0);
                 icmp_header->set_checksum(complement_checksum(ip_data));
                 break;
             }
             case IPV4Protocol::UDP: {
-                IPV4PseudoHeader pseudo{*ip_header};
                 auto *udp_header = reinterpret_cast<UDPHeader *>(ip_data.begin());
-                uint16_t checksum = complement_checksum_add(pseudo.into_slice(), ip_data);
                 udp_header->set_src_port(wan_port);
                 udp_header->set_checksum(0);
-                udp_header->set_checksum_enable(checksum);
+                udp_header->set_checksum_enable(complement_checksum(*ip_header, ip_data));
                 break;
             }
             default:
@@ -149,7 +173,7 @@ void NatServer::nat_wan_to_lan() {
     for (;;) {
         auto receive = wan->recv();
 
-        auto[ip_header, ip_option, ip_data] = ipv4_split(*receive);
+        auto[ip_header, ip_option, ip_data] = ipv4_split((*receive)[Range{}]);
         if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
             cs120_warn("invalid package!");
             continue;
@@ -165,13 +189,27 @@ void NatServer::nat_wan_to_lan() {
                     cs120_warn("invalid package!");
                     continue;
                 }
-                wan_port = icmp_header->get_identification();
+
+                auto icmp_data = ip_data[Range{sizeof(ICMPHeader)}];
+                if (icmp_data.size() < sizeof(ICMPData)) { continue; }
+                auto *recv_port = reinterpret_cast<struct ICMPData *>(icmp_data.begin());
+
+                switch (icmp_header->get_type()) {
+                    case ICMPType::EchoReply:
+                        wan_port = recv_port->src_port;
+                        break;
+                    case ICMPType::EchoRequest:
+                        wan_port = recv_port->dest_port;
+                        break;
+                    default:
+                        continue;
+                }
+
                 break;
             }
             case IPV4Protocol::UDP: {
-                IPV4PseudoHeader pseudo{*ip_header};
                 auto *udp_header = ip_data.buffer_cast<UDPHeader>();
-                uint16_t checksum = complement_checksum_add(pseudo.into_slice(), ip_data);
+                uint16_t checksum = complement_checksum(*ip_header, ip_data);
                 if (udp_header == nullptr || !udp_header->check_checksum(checksum)) {
                     cs120_warn("invalid package!");
                     continue;
@@ -206,18 +244,29 @@ void NatServer::nat_wan_to_lan() {
         switch (ip_header->get_protocol()) {
             case IPV4Protocol::ICMP: {
                 auto *icmp_header = reinterpret_cast<ICMPHeader *>(ip_data.begin());
-                icmp_header->set_identification(lan_port);
+                auto icmp_data = ip_data[Range{sizeof(ICMPHeader)}];
+                auto *recv_port = reinterpret_cast<struct ICMPData *>(icmp_data.begin());
+
+                switch (icmp_header->get_type()) {
+                    case ICMPType::EchoReply:
+                        recv_port->src_port = lan_port;
+                        break;
+                    case ICMPType::EchoRequest:
+                        recv_port->dest_port = lan_port;
+                        break;
+                    default:
+                        continue;
+                }
+
                 icmp_header->set_checksum(0);
                 icmp_header->set_checksum(complement_checksum(ip_data));
                 break;
             }
             case IPV4Protocol::UDP: {
-                IPV4PseudoHeader pseudo{*ip_header};
                 auto *udp_header = reinterpret_cast<UDPHeader *>(ip_data.begin());
-                uint16_t checksum = complement_checksum_add(pseudo.into_slice(), ip_data);
                 udp_header->set_dest_port(lan_port);
                 udp_header->set_checksum(0);
-                udp_header->set_checksum_enable(checksum);
+                udp_header->set_checksum_enable(complement_checksum(*ip_header, ip_data));
                 break;
             }
             default:

@@ -105,6 +105,8 @@ private:
     size_t end_;
 
 public:
+    Range() : begin_{0}, end_{0} {}
+
     explicit Range(size_t start) : begin_{start}, end_{0} {}
 
     Range(size_t start, size_t end) : begin_{start}, end_{end} {
@@ -128,55 +130,6 @@ class Slice;
 
 template<typename T>
 class MutSlice;
-
-
-template<typename SubT, typename T>
-struct IndexTrait {
-private:
-    const SubT *sub_type() const { return reinterpret_cast<const SubT *>(this); }
-
-public:
-    const T &operator[](size_t index) const {
-        if (index >= sub_type()->size()) { cs120_abort("index out of boundary!"); }
-
-        return sub_type()->begin()[index];
-    }
-
-    Slice<T> operator[](Range range) const {
-        if (range.end() == 0) { range = Range{range.begin(), sub_type()->size()}; }
-        if (range.begin() == range.end()) { return Slice<T>{}; }
-
-        if (range.begin() > range.end() || range.end() > sub_type()->size()) {
-            cs120_abort("index out of boundary!");
-        }
-
-        return Slice<T>{sub_type()->begin() + range.begin(), range.end() - range.begin()};
-    }
-};
-
-template<typename SubT, typename T>
-struct MutIndexTrait : public IndexTrait<SubT, T> {
-private:
-    SubT *sub_type() { return reinterpret_cast<SubT *>(this); }
-
-public:
-    T &operator[](size_t index) {
-        if (index >= sub_type()->size()) { cs120_abort("index out of boundary!"); }
-
-        return sub_type()->begin()[index];
-    }
-
-    MutSlice<T> operator[](Range range) {
-        if (range.end() == 0) { range = Range{range.begin(), sub_type()->size()}; }
-        if (range.begin() == range.end()) { return MutSlice<T>{}; }
-
-        if (range.begin() > range.end() || range.end() > sub_type()->size()) {
-            cs120_abort("index out of boundary!");
-        }
-
-        return MutSlice<T>{sub_type()->begin() + range.begin(), range.end() - range.begin()};
-    }
-};
 
 template<typename U, typename T, bool = std::is_pod<T>::value>
 struct _clone;
@@ -207,30 +160,6 @@ struct _clone<U, T, false> {
     }
 };
 
-template<typename SubT, typename T>
-struct SliceTrait {
-private:
-    const SubT *sub_type() const { return reinterpret_cast<const SubT *>(this); }
-
-public:
-    Array<T> clone() const { return _clone<SubT, T>::inner(*sub_type()); }
-
-    bool empty() const { return sub_type()->size() == 0; }
-
-    void format() const {
-        size_t i = 0;
-
-        for (auto &item: *sub_type()) {
-            if (i % 32 == 0) { printf(&"\n%.4X: "[i == 0], static_cast<uint32_t>(i)); }
-            printf("%.2X ", item);
-            ++i;
-        }
-
-        printf("\n");
-    }
-};
-
-
 template<typename U, typename T, bool = std::is_pod<T>::value>
 struct _copy;
 
@@ -248,25 +177,47 @@ struct _copy<U, T, false> {
     }
 };
 
-
 template<typename SubT, typename T>
-struct MutSliceTrait : SliceTrait<SubT, T> {
-private:
-    SubT *sub_type() { return reinterpret_cast<SubT *>(this); }
-
-public:
-    void copy_from_slice(Slice<T> other) {
-        if (sub_type()->size() != other.size()) { cs120_abort("slice size does not match!"); }
-        _copy<SubT, T>::inner(*sub_type(), other);
-    }
-};
-
-template<typename SubT>
-struct BufferTrait {
-private:
+struct SliceTrait {
+protected:
     const SubT *sub_type() const { return reinterpret_cast<const SubT *>(this); }
 
 public:
+    using Item = T;
+
+    const T &operator[](size_t index) const {
+        if (index >= sub_type()->size()) { cs120_abort("index out of boundary!"); }
+
+        return sub_type()->begin()[index];
+    }
+
+    Slice<T> operator[](Range range) const {
+        if (range.end() == 0) { range = Range{range.begin(), sub_type()->size()}; }
+        if (range.begin() == range.end()) { return Slice<T>{}; }
+
+        if (range.begin() > range.end() || range.end() > sub_type()->size()) {
+            cs120_abort("index out of boundary!");
+        }
+
+        return Slice<T>{sub_type()->begin() + range.begin(), range.end() - range.begin()};
+    }
+
+    Array<T> clone() const { return _clone<SubT, T>::inner(*sub_type()); }
+
+    bool empty() const { return sub_type()->size() == 0; }
+
+    void format() const {
+        size_t i = 0;
+
+        for (auto &item: *sub_type()) {
+            if (i % 32 == 0) { printf(&"\n%.4X: "[i == 0], static_cast<uint32_t>(i)); }
+            printf("%.2X ", item);
+            ++i;
+        }
+
+        printf("\n");
+    }
+
     template<typename U>
     const U *buffer_cast() const {
         if (!std::is_same<typename SubT::Item, uint8_t>::value) { return nullptr; }
@@ -279,12 +230,34 @@ public:
     }
 };
 
-template<typename SubT>
-struct MutBufferTrait : public BufferTrait<SubT> {
-private:
+template<typename SubT, typename T>
+struct MutSliceTrait : public SliceTrait<SubT, T> {
+protected:
     SubT *sub_type() { return reinterpret_cast<SubT *>(this); }
 
 public:
+    T &operator[](size_t index) {
+        if (index >= sub_type()->size()) { cs120_abort("index out of boundary!"); }
+
+        return sub_type()->begin()[index];
+    }
+
+    MutSlice<T> operator[](Range range) {
+        if (range.end() == 0) { range = Range{range.begin(), sub_type()->size()}; }
+        if (range.begin() == range.end()) { return MutSlice<T> {}; }
+
+        if (range.begin() > range.end() || range.end() > sub_type()->size()) {
+            cs120_abort("index out of boundary!");
+        }
+
+        return MutSlice<T>{sub_type()->begin() + range.begin(), range.end() - range.begin()};
+    }
+
+    void copy_from_slice(Slice<T> other) {
+        if (sub_type()->size() != other.size()) { cs120_abort("slice size does not match!"); }
+        _copy<SubT, T>::inner(*sub_type(), other);
+    }
+
     template<typename U>
     U *buffer_cast() {
         if (!std::is_same<typename SubT::Item, uint8_t>::value) { return nullptr; }
@@ -293,23 +266,38 @@ public:
         if ((ptr & (std::alignment_of<U>::value - 1)) != 0) {
             cs120_abort("given ptr not aligned!");
         }
-        return U::from_slice(*sub_type());
+        return U::from_slice((*sub_type())[Range{}]);
     }
 };
 
+template<typename T, size_t len>
+class Buffer : public MutSliceTrait<Buffer<T, len>, T> {
+private:
+    T inner[len];
+
+public:
+    Buffer() : inner{} {}
+
+    size_t size() const { return len; }
+
+    T *begin() { return inner; }
+
+    T *end() { return &inner[len]; }
+
+    const T *begin() const { return inner; }
+
+    const T *end() const { return &inner[len]; }
+
+    ~Buffer() = default;
+};
 
 template<typename T>
-class Array :
-        public MutIndexTrait<Array<T>, T>,
-        public MutSliceTrait<Array<T>, T>,
-        public MutBufferTrait<Array<T>> {
+class Array : public MutSliceTrait<Array<T>, T> {
 private:
     T *inner;
     size_t size_;
 
 public:
-    using Item = T;
-
     Array() : inner{nullptr}, size_{0} {}
 
     explicit Array(size_t size) : inner{new T[size]{}}, size_{size} {}
@@ -343,20 +331,13 @@ public:
 };
 
 template<typename T>
-class MutSlice :
-        public MutIndexTrait<MutSlice<T>, T>,
-        public MutSliceTrait<MutSlice<T>, T>,
-        public MutBufferTrait<MutSlice<T>> {
+class MutSlice : public MutSliceTrait<MutSlice<T>, T> {
 private:
     T *inner;
     size_t size_;
 
 public:
-    using Item = T;
-
     MutSlice() : inner{nullptr}, size_{0} {}
-
-    MutSlice(Array<T> &other) : inner{other.begin()}, size_{other.size()} {}
 
     MutSlice(T *inner, size_t size_) : inner{inner}, size_{size_} {
         auto ptr = reinterpret_cast<size_t>(inner);
@@ -379,20 +360,13 @@ public:
 };
 
 template<typename T>
-class Slice :
-        public IndexTrait<Slice<T>, T>,
-        public SliceTrait<Slice<T>, T>,
-        public BufferTrait<Slice<T>> {
+class Slice : public SliceTrait<Slice<T>, T> {
 private:
     const T *inner;
     size_t size_;
 
 public:
-    using Item = T;
-
     Slice() : inner{nullptr}, size_{0} {}
-
-    Slice(const Array<T> &other) : inner{other.begin()}, size_{other.size()} {}
 
     Slice(MutSlice<T> other) : inner{other.begin()}, size_{other.size()} {}
 

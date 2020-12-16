@@ -16,7 +16,7 @@ size_t UDPServer::send(Slice<uint8_t> data) {
 
         size_t size = std::min(maximum, data.size());
 
-        UDPHeader::generate(*buffer, identifier, src_ip, dest_ip, src_port, dest_port,
+        UDPHeader::generate((*buffer)[Range{}], identifier, src_ip, dest_ip, src_port, dest_port,
                             data[Range{0, size}]);
 
         data = data[Range{size}];
@@ -58,11 +58,8 @@ size_t UDPServer::recv(MutSlice<uint8_t> data) {
         auto ip_data = (*buffer)[Range{ip_header->get_header_length(),
                                        ip_header->get_total_length()}];
 
-        IPV4PseudoHeader pseudo_header{*ip_header};
-
         auto [udp_header, udp_data] = udp_split(ip_data);
-        uint16_t checksum = complement_checksum_add(pseudo_header.into_slice(), ip_data);
-        if (udp_header == nullptr || !udp_header->check_checksum(checksum)) {
+        if (udp_header == nullptr || !udp_header->check_checksum(complement_checksum(*ip_header, ip_data))) {
             cs120_warn("invalid package!");
             continue;
         }

@@ -10,6 +10,21 @@
 
 
 namespace cs120 {
+cs120_static_inline uint32_t complement_checksum_sum(Slice<uint8_t> buffer_) {
+    Slice<uint16_t> buffer{reinterpret_cast<const uint16_t *>(buffer_.begin()), buffer_.size() / 2};
+
+    uint32_t sum = 0;
+
+    for (auto &item: buffer) { sum += item; }
+    if (buffer_.size() % 2 != 0) { sum += buffer_[buffer_.size() & ~1]; }
+
+    return sum;
+}
+
+cs120_static_inline uint16_t complement_checksum_complement(uint32_t sum) {
+    return static_cast<uint16_t>(~((sum & 0xffffu) + (sum >> 16u)));
+}
+
 /// RFC 1071
 /// Calculates the Internet-checksum
 /// Valid for the IP, ICMP, TCP or UDP header
@@ -18,8 +33,6 @@ namespace cs120 {
 /// len : length of the data (in bytes)
 /// return : checksum in network byte order
 uint16_t complement_checksum(Slice<uint8_t> buffer);
-
-uint16_t complement_checksum_add(Slice<uint8_t> a, Slice<uint8_t> b);
 
 uint32_t get_local_ip();
 

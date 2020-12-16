@@ -45,10 +45,8 @@ public:
 
         udp_frame[Range{sizeof(UDPHeader)}][Range{0, data.size()}].copy_from_slice(data);
 
-        IPV4PseudoHeader pseudo_header{*reinterpret_cast<IPV4Header *>(frame.begin())};
-
-        udp_header->set_checksum_enable(
-                complement_checksum_add(pseudo_header.into_slice(), udp_frame));
+        auto *ip_header = reinterpret_cast<IPV4Header *>(frame.begin());
+        udp_header->set_checksum_enable(complement_checksum(*ip_header, udp_frame));
 
         return udp_size;
     }

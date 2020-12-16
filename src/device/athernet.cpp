@@ -1,4 +1,4 @@
-#include "athernet.hpp"
+#include "device/athernet.hpp"
 
 #include <sys/socket.h>
 

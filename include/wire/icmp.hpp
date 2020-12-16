@@ -100,6 +100,10 @@ public:
         printf("}\n");
     }
 }__attribute__((packed));
+
+struct ICMPData {
+    uint16_t src_port, dest_port;
+}__attribute__((packed));
 }
 
 

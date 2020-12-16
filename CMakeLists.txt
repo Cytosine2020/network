@@ -15,28 +15,23 @@ find_package(LIBNET REQUIRED)
 
 include_directories(${PCAP_INCLUDE_DIR} ${LIBNET_INCLUDE_DIR} include)
 
-add_executable(icmp-ping
-        src/icmp_ping.cpp src/wire/wire.cpp src/queue.cpp src/athernet.cpp
-        src/device/unix_socket.cpp src/server/icmp_server.cpp)
-target_link_libraries(icmp-ping pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
-
-add_executable(fake-athernet
-        src/fake_athernet.cpp src/wire/wire.cpp src/queue.cpp src/athernet.cpp
-        src/device/athernet_socket.cpp src/server/icmp_server.cpp)
-target_link_libraries(fake-athernet pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
+add_executable(icmp
+        src/icmp.cpp src/wire/wire.cpp src/device/athernet.cpp
+        src/device/unix_socket.cpp src/device/athernet_socket.cpp src/server/icmp_server.cpp)
+target_link_libraries(icmp pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
 add_executable(udp
-        src/udp.cpp src/wire/wire.cpp src/queue.cpp src/athernet.cpp
+        src/udp.cpp src/wire/wire.cpp src/device/athernet.cpp
         src/device/raw_socket.cpp src/server/udp_server.cpp)
 target_link_libraries(udp pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
 add_executable(tcp
-        src/tcp.cpp src/wire/wire.cpp src/queue.cpp src/athernet.cpp
+        src/tcp.cpp src/wire/wire.cpp src/device/athernet.cpp
         src/device/raw_socket.cpp src/server/tcp_server.cpp)
 target_link_libraries(tcp pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
 add_executable(nat
-        src/nat.cpp src/wire/wire.cpp src/queue.cpp src/athernet.cpp
+        src/nat.cpp src/wire/wire.cpp src/device/athernet.cpp
         src/device/raw_socket.cpp src/device/unix_socket.cpp src/device/athernet_socket.cpp
         src/server/nat_server.cpp src/server/udp_server.cpp src/server/icmp_server.cpp)
 target_link_libraries(nat pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})

@@ -62,7 +62,7 @@ public:
         set_dest_ip(dest_ip);
     }
 
-    static size_t generate(MutSlice <uint8_t> frame, uint16_t identifier, IPV4Protocol protocol,
+    static size_t generate(MutSlice<uint8_t> frame, uint16_t identifier, IPV4Protocol protocol,
                            uint32_t src_ip, uint32_t dest_ip, size_t len) {
         if (frame.size() < sizeof(IPV4Header)) { return 0; }
 
@@ -74,15 +74,15 @@ public:
         return sizeof(IPV4Header);
     }
 
-    Slice <uint8_t> into_slice() const {
+    Slice<uint8_t> into_slice() const {
         return Slice<uint8_t>{reinterpret_cast<const uint8_t *>(this), get_header_length()};
     }
 
-    MutSlice <uint8_t> into_slice() {
+    MutSlice<uint8_t> into_slice() {
         return MutSlice<uint8_t>{reinterpret_cast<uint8_t *>(this), get_header_length()};
     }
 
-    static const IPV4Header *from_slice(Slice <uint8_t> data) {
+    static const IPV4Header *from_slice(Slice<uint8_t> data) {
         auto *result = reinterpret_cast<const IPV4Header *>(data.begin());
         if (data.size() < result->get_total_length() ||
             result->get_total_length() < result->get_header_length() ||
@@ -92,7 +92,7 @@ public:
         return result;
     }
 
-    static IPV4Header *from_slice(MutSlice <uint8_t> data) {
+    static IPV4Header *from_slice(MutSlice<uint8_t> data) {
         return const_cast<IPV4Header *>(from_slice(Slice<uint8_t>{data}));
     }
 
@@ -211,11 +211,11 @@ public:
         set_data_length(other.get_total_length() - other.get_header_length());
     }
 
-    Slice <uint8_t> into_slice() const {
+    Slice<uint8_t> into_slice() const {
         return Slice<uint8_t>{reinterpret_cast<const uint8_t *>(this), sizeof(IPV4PseudoHeader)};
     }
 
-    MutSlice <uint8_t> into_slice() {
+    MutSlice<uint8_t> into_slice() {
         return MutSlice<uint8_t>{reinterpret_cast<uint8_t *>(this), sizeof(IPV4PseudoHeader)};
     }
 
@@ -238,6 +238,13 @@ public:
         data_length = htons(value);
     }
 }__attribute__((packed));
+
+
+cs120_static_inline uint16_t complement_checksum(const IPV4Header &ip_header, Slice<uint8_t> b) {
+    IPV4PseudoHeader pseudo{ip_header};
+    uint32_t sum = complement_checksum_sum(pseudo.into_slice()) + complement_checksum_sum(b);
+    return complement_checksum_complement(sum);
+}
 
 
 cs120_static_inline std::tuple<IPV4Header *, MutSlice<uint8_t>, MutSlice<uint8_t>>

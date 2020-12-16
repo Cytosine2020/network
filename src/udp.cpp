@@ -107,7 +107,7 @@ int main(int argc, char **argv) {
             UDPServer server{std::move(sock), src_ip, dest_ip, src_port, dest_port};
 
             for (;;) {
-                size_t size = server.recv(buffer);
+                size_t size = server.recv(buffer[Range{}]);
 
                 if (static_cast<size_t>(write(file, buffer.begin(), size)) != size) {
                     cs120_abort("write error");

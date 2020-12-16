@@ -6,6 +6,7 @@
 
 #include "queue.hpp"
 #include "wire/wire.hpp"
+#include "raw_socket.hpp"
 
 
 namespace cs120 {
@@ -14,7 +15,7 @@ constexpr size_t ATHERNET_MTU = 256;
 
 struct unix_socket_args {
     int athernet;
-    SPSCQueue *queue;
+    SPSCQueue<PacketBuffer> *queue;
 };
 
 void *unix_socket_sender(void *args_);

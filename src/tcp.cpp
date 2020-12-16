@@ -115,7 +115,7 @@ int main(int argc, char **argv) {
             auto server = TCPServer::accept(std::move(sock), src_ip, dest_ip, src_port, dest_port);
 
             for (;;) {
-                size_t size = server.recv(buffer);
+                size_t size = server.recv(buffer[Range{}]);
                 if (size == 0) { break; }
 
                 if (static_cast<size_t>(write(file, buffer.begin(), size)) != size) {

@@ -16,7 +16,7 @@ using namespace cs120;
 struct pcap_callback_args {
     pcap_t *pcap_handle;
     struct bpf_program filter;
-    SPSCQueue *queue;
+    SPSCQueue<PacketBuffer> *queue;
     uint32_t ip_addr;
 };
 
@@ -47,7 +47,7 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
     }
 
     if (ip_header->get_src_ip() == args->ip_addr &&
-            ip_header->get_dest_ip() != args->ip_addr) { return; }
+        ip_header->get_dest_ip() != args->ip_addr) { return; }
 
     auto slot = args->queue->try_send();
     if (slot->empty()) {
@@ -72,7 +72,7 @@ void *raw_socket_receiver(void *args_) {
 
 struct raw_socket_sender_args {
     libnet_t *context;
-    SPSCQueue *queue;
+    SPSCQueue<PacketBuffer> *queue;
 };
 
 void *raw_socket_sender(void *args_) {
@@ -81,7 +81,7 @@ void *raw_socket_sender(void *args_) {
     for (;;) {
         auto buffer = args->queue->recv();
 
-        auto[ip_header, ip_option, ip_data] = ipv4_split(*buffer); // todo
+        auto[ip_header, ip_option, ip_data] = ipv4_split((*buffer)[Range{}]);
         if (ip_header == nullptr) {
             cs120_warn("invalid package!");
             continue;
@@ -128,8 +128,8 @@ RawSocket::RawSocket(size_t size, uint32_t ip_addr) :
 
     pcap_freealldevs(device);
 
-    receive_queue = new SPSCQueue{get_mtu(), size};
-    send_queue = new SPSCQueue{get_mtu(), size};
+    receive_queue = new SPSCQueue<PacketBuffer>{size};
+    send_queue = new SPSCQueue<PacketBuffer>{size};
 
     auto *recv_args = new pcap_callback_args{
             .pcap_handle = pcap_handle,

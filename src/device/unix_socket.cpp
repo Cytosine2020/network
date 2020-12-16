@@ -4,14 +4,15 @@
 #include <sys/socket.h>
 
 #include "utility.hpp"
-#include "athernet.hpp"
+#include "device/athernet.hpp"
+#include "device/base_socket.hpp"
 
 
 namespace cs120 {
 UnixSocket::UnixSocket(size_t size) :
         receiver{}, sender{}, receive_queue{nullptr}, send_queue{nullptr}, athernet{-1} {
-    receive_queue = new SPSCQueue{get_mtu(), size};
-    send_queue = new SPSCQueue{get_mtu(), size};
+    receive_queue = new SPSCQueue<PacketBuffer>{size};
+    send_queue = new SPSCQueue<PacketBuffer>{size};
 
     athernet = socket(AF_UNIX, SOCK_STREAM, 0);
 
