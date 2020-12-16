@@ -11,7 +11,7 @@
 
 
 namespace cs120 {
-/// this socket if for mimicking athernet device through unix socket
+/// this socket is for mimicking athernet device through unix socket
 class AthernetSocket : public BaseSocket {
 private:
     pthread_t receiver, sender;

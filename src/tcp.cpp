@@ -10,17 +10,23 @@
 using namespace cs120;
 
 int main(int argc, char **argv) {
-    if (argc != 5) { cs120_abort("accept 4 arguments"); }
+    if (argc != 6) { cs120_abort("accept 5 arguments"); }
+
+    auto device = argv[1];
+    auto src = argv[2];
+    auto dest = argv[3];
+    auto command = argv[4];
+    auto file_name = argv[5];
 
     auto src_ip = get_local_ip();
-    uint16_t src_port = 50000;
-    auto[dest_ip, dest_port] = parse_ip_address(argv[3]);
+    uint16_t src_port = std::stoi(src);
+    auto[dest_ip, dest_port] = parse_ip_address(dest);
 
-    printf("bind %s:%d\n", inet_ntoa(in_addr{src_ip}), src_port);
-    printf("listen %s:%d\n", inet_ntoa(in_addr{dest_ip}), dest_port);
+    printf("local %s:%d\n", inet_ntoa(in_addr{src_ip}), src_port);
+    printf("remote %s:%d\n", inet_ntoa(in_addr{dest_ip}), dest_port);
 
-    if (strcmp(argv[1], "-s") == 0) {
-        int file = open(argv[4], O_RDONLY);
+    if (strcmp(command, "-s") == 0) {
+        int file = open(file_name, O_RDONLY);
         if (file < 0) { cs120_abort("open error"); }
 
         struct stat tmp{};
@@ -31,11 +37,11 @@ int main(int argc, char **argv) {
 
         close(file);
 
-        printf("sending file `%s`\n", argv[4]);
+        printf("sending file `%s`\n", file_name);
 
         Slice<uint8_t> data{reinterpret_cast<uint8_t *>(buffer), static_cast<size_t>(tmp.st_size)};
 
-        if (strcmp(argv[2], "-a") == 0) {
+        if (strcmp(device, "-a") == 0) {
             std::unique_ptr<BaseSocket> sock(new RawSocket{64, get_local_ip()});
             auto server = TCPServer::accept(std::move(sock), src_ip, dest_ip, src_port, dest_port);
 
@@ -49,7 +55,7 @@ int main(int argc, char **argv) {
             }
 
             if (j < i) { server.send(data[Range{j, i}]); }
-        } else if (strcmp(argv[2], "-e") == 0) {
+        } else if (strcmp(device, "-e") == 0) {
             int sock = socket(AF_INET, SOCK_STREAM, 0);
             if (sock < 0) { cs120_abort("socket error"); }
 
@@ -68,13 +74,6 @@ int main(int argc, char **argv) {
 
             if (connect(sock, reinterpret_cast<sockaddr *>(&dest_addr),
                         sizeof(struct sockaddr_in)) < 0) { cs120_abort("connect error"); }
-
-//            socklen_t length = 0;
-//            if (listen(sock, 0) != 0) { cs120_abort("listen error"); }
-//            int fd = accept(sock, reinterpret_cast<sockaddr *>(&dest_addr), &length);
-//            if (fd < 0) { cs120_abort("accept error"); }
-//
-//            close(sock);
 
             size_t i = 0, j = 0;
             for (; i < data.size(); ++i) {
@@ -99,18 +98,20 @@ int main(int argc, char **argv) {
             }
 
             close(sock);
+        } else {
+            cs120_abort("unknown device!");
         }
 
         munmap(buffer, tmp.st_size);
-    } else if (strcmp(argv[1], "-r") == 0) {
-        int file = open(argv[4], O_RDWR | O_CREAT | O_TRUNC | O_APPEND, 0644);
+    } else if (strcmp(command, "-r") == 0) {
+        int file = open(file_name, O_RDWR | O_CREAT | O_TRUNC | O_APPEND, 0644);
         if (file < 0) { cs120_abort("open error"); }
 
-        printf("receiving file `%s`\n", argv[4]);
+        printf("receiving file `%s`\n", file_name);
 
         Array<uint8_t> buffer{2048};
 
-        if (strcmp(argv[2], "-a") == 0) {
+        if (strcmp(device, "-a") == 0) {
             std::unique_ptr<BaseSocket> sock(new RawSocket{64, get_local_ip()});
             auto server = TCPServer::accept(std::move(sock), src_ip, dest_ip, src_port, dest_port);
 
@@ -125,7 +126,7 @@ int main(int argc, char **argv) {
                 printf("%s:%u: ", inet_ntoa(in_addr{dest_ip}), dest_port);
                 printf("%.*s\n", static_cast<uint32_t>(size), buffer.begin());
             }
-        } else if (strcmp(argv[2], "-e") == 0) {
+        } else if (strcmp(device, "-e") == 0) {
             int sock = socket(AF_INET, SOCK_STREAM, 0);
             if (sock < 0) { cs120_abort("socket error"); }
 
@@ -157,6 +158,8 @@ int main(int argc, char **argv) {
             }
 
             close(sock);
+        } else {
+            cs120_abort("unknown device!");
         }
     } else {
         cs120_abort("unknown command!");

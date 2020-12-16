@@ -22,6 +22,15 @@ enum class TCPState {
     Closed,
 };
 
+
+class TCPListener {
+private:
+
+public:
+
+};
+
+
 class TCPServer {
 private:
     std::unique_ptr<BaseSocket> device;
