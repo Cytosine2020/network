@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.0)
 
 project(CS120)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -18,12 +18,12 @@ include_directories(${PCAP_INCLUDE_DIR} ${LIBNET_INCLUDE_DIR} include)
 add_executable(icmp
         src/icmp.cpp src/wire/wire.cpp src/device/athernet.cpp
         src/device/unix_socket.cpp src/device/athernet_socket.cpp src/server/icmp_server.cpp)
-target_link_libraries(icmp pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
+target_link_libraries(icmp pthread ${PCAP_LIBRARY})
 
 add_executable(udp
         src/udp.cpp src/wire/wire.cpp src/device/athernet.cpp
-        src/device/raw_socket.cpp src/server/udp_server.cpp)
-target_link_libraries(udp pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
+        src/device/unix_socket.cpp src/device/athernet_socket.cpp src/server/udp_server.cpp)
+target_link_libraries(udp pthread ${PCAP_LIBRARY})
 
 add_executable(tcp
         src/tcp.cpp src/wire/wire.cpp src/device/athernet.cpp
@@ -32,11 +32,10 @@ target_link_libraries(tcp pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
 add_executable(nat
         src/nat.cpp src/wire/wire.cpp src/device/athernet.cpp
-        src/device/raw_socket.cpp src/device/unix_socket.cpp src/device/athernet_socket.cpp
-        src/server/nat_server.cpp src/server/udp_server.cpp src/server/icmp_server.cpp)
+        src/device/raw_socket.cpp src/device/unix_socket.cpp src/server/nat_server.cpp)
 target_link_libraries(nat pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
-foreach (executable udp tcp nat)
+foreach (executable tcp nat)
     if (APPLE)
         add_custom_command(
                 TARGET ${executable}

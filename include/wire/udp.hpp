@@ -87,7 +87,7 @@ public:
 
     void set_checksum_enable(uint16_t value) { checksum = value == 0 ? 0xFFFF : value; }
 
-    bool check_checksum(uint16_t value) {
+    bool check_checksum(uint16_t value) const {
         if (checksum == 0 || value == 0) {
             return true;
         } else {

@@ -13,66 +13,10 @@
 namespace {
 using namespace cs120;
 
-struct pcap_callback_args {
-    pcap_t *pcap_handle;
-    struct bpf_program filter;
-    MPSCSender<PacketBuffer> queue;
-    uint32_t ip_addr;
-};
-
-void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *packet) {
-    auto *args = reinterpret_cast<pcap_callback_args *>(args_);
-
-    if (info->caplen != info->len) {
-        cs120_warn("packet truncated!");
-        return;
-    }
-
-    Slice<uint8_t> eth_datagram{packet, info->caplen};
-
-    auto *eth_header = eth_datagram.buffer_cast<ETHHeader>();
-    if (eth_header == nullptr) {
-        cs120_warn("invalid package!");
-        return;
-    }
-
-    if (eth_header->protocol != 8) { return; }
-
-    auto eth_data = eth_datagram[Range(sizeof(ETHHeader))];
-
-    auto *ip_header = eth_data.buffer_cast<IPV4Header>();
-    if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
-        cs120_warn("invalid package!");
-        return;
-    }
-
-    if (ip_header->get_src_ip() == args->ip_addr &&
-        ip_header->get_dest_ip() != args->ip_addr) { return; }
-
-    auto slot = args->queue.try_send();
-    if (slot->empty()) {
-        cs120_warn("package loss!");
-    } else {
-        auto ip_datagram = eth_data[Range{0, ip_header->get_total_length()}];
-        (*slot)[Range{0, ip_datagram.size()}].copy_from_slice(ip_datagram);
-    }
-}
-
-void *raw_socket_receiver(void *args_) {
-    auto *args = reinterpret_cast<pcap_callback_args *>(args_);
-    auto *pcap_args = reinterpret_cast<u_char *>(args);
-    auto count = std::numeric_limits<int32_t>::max();
-
-    for (;;) {
-        if (pcap_loop(args->pcap_handle, count, pcap_callback, pcap_args) == PCAP_ERROR) {
-            cs120_abort(pcap_geterr(args->pcap_handle));
-        }
-    }
-}
 
 struct raw_socket_sender_args {
     libnet_t *context;
-    MPSCReceiver<PacketBuffer> queue;
+    MPSCQueue<PacketBuffer>::Receiver queue;
 };
 
 void *raw_socket_sender(void *args_) {
@@ -107,12 +51,55 @@ void *raw_socket_sender(void *args_) {
         libnet_clear_packet(args->context);
     }
 }
+
+
+struct pcap_callback_args {
+    pcap_t *pcap_handle;
+    Demultiplexer demultiplexer;
+};
+
+void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *packet) {
+    auto *args = reinterpret_cast<pcap_callback_args *>(args_);
+
+    args->demultiplexer.update();
+
+    if (info->caplen != info->len) {
+        cs120_warn("packet truncated!");
+        return;
+    }
+
+    Slice<uint8_t> eth_datagram{packet, info->caplen};
+
+    auto *eth_header = eth_datagram.buffer_cast<ETHHeader>();
+    if (eth_header == nullptr) {
+        cs120_warn("invalid package!");
+        return;
+    }
+
+    if (eth_header->protocol != 8) { return; }
+
+    auto eth_data = eth_datagram[Range(sizeof(ETHHeader))];
+
+    args->demultiplexer.send(eth_data);
+}
+
+void *raw_socket_receiver(void *args_) {
+    auto *args = reinterpret_cast<pcap_callback_args *>(args_);
+    auto *pcap_args = reinterpret_cast<u_char *>(args_);
+    auto count = std::numeric_limits<int32_t>::max();
+
+    for (;;) {
+        if (pcap_loop(args->pcap_handle, count, pcap_callback, pcap_args) == PCAP_ERROR) {
+            cs120_abort(pcap_geterr(args->pcap_handle));
+        }
+    }
+}
 }
 
 
 namespace cs120 {
-RawSocket::RawSocket(size_t size, uint32_t ip_addr) :
-        receiver{}, sender{}, recv_queue{nullptr}, send_queue{nullptr} {
+RawSocket::RawSocket(size_t size) :
+        receiver{}, sender{}, recv_queue{}, send_queue{} {
     char pcap_error[PCAP_ERRBUF_SIZE]{};
     pcap_if_t *device = nullptr;
 
@@ -128,17 +115,11 @@ RawSocket::RawSocket(size_t size, uint32_t ip_addr) :
 
     pcap_freealldevs(device);
 
-    auto[recv_sender, recv_receiver] = MPSCQueue<PacketBuffer>::channel(size);
     auto[send_sender, send_receiver] = MPSCQueue<PacketBuffer>::channel(size);
-
-    recv_queue = std::move(recv_receiver);
-    send_queue = std::move(send_sender);
 
     auto *recv_args = new pcap_callback_args{
             .pcap_handle = pcap_handle,
-            .filter = (struct bpf_program) {},
-            .queue = std::move(recv_sender),
-            .ip_addr = ip_addr,
+            .demultiplexer = Demultiplexer{size},
     };
 
     auto *send_args = new raw_socket_sender_args{
@@ -146,10 +127,8 @@ RawSocket::RawSocket(size_t size, uint32_t ip_addr) :
             .queue = std::move(send_receiver),
     };
 
-    if (pcap_compile(pcap_handle, &recv_args->filter, "icmp or udp or tcp", 0,
-                     PCAP_NETMASK_UNKNOWN) == PCAP_ERROR) {
-        cs120_abort(pcap_geterr(pcap_handle));
-    }
+    recv_queue = recv_args->demultiplexer.get_sender();
+    send_queue = std::move(send_sender);
 
     pthread_create(&receiver, nullptr, raw_socket_receiver, recv_args);
     pthread_create(&sender, nullptr, raw_socket_sender, send_args);

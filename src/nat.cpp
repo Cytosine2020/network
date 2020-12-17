@@ -7,16 +7,19 @@
 using namespace cs120;
 
 int main(int argc, char **argv) {
-    uint32_t ip_addr = get_local_ip();
+    if (argc < 2) { cs120_abort("accept 1 or more arguments"); }
 
-    Array<std::pair<uint32_t, uint16_t>> ip_map{static_cast<size_t>(argc - 1)};
+    uint16_t lan_ip = inet_addr(argv[1]);
+    uint32_t wan_addr = get_local_ip();
 
-    for (size_t i = 1; i < static_cast<size_t>(argc); ++i) {
-        ip_map[i - 1] = parse_ip_address(argv[i]);
+    Array<std::pair<uint32_t, uint16_t>> ip_map{static_cast<size_t>(argc - 2)};
+
+    for (size_t i = 2; i < static_cast<size_t>(argc); ++i) {
+        ip_map[i - 2] = parse_ip_address(argv[i]);
     }
 
-    std::unique_ptr<BaseSocket> lan(new UnixSocket{64});
-    std::unique_ptr<BaseSocket> wan(new RawSocket{64, ip_addr});
+    std::shared_ptr<BaseSocket> lan(new UnixSocket{64});
+    std::shared_ptr<BaseSocket> wan(new RawSocket{64});
 
-    NatServer server{ip_addr, std::move(lan), std::move(wan), ip_map};
+    NatServer server{lan_ip, wan_addr, std::move(lan), std::move(wan), 64, ip_map};
 }

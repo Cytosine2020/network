@@ -43,6 +43,8 @@ cs120_static_inline cs120_no_return void _unreachable(const char *file, int line
 
 cs120_static_inline const char *bool_to_string(bool value) { return value ? "true" : "false"; }
 
+class Empty{};
+
 template<typename T, size_t end, size_t begin>
 struct bits_mask {
 private:
@@ -154,7 +156,7 @@ struct _clone<U, T, false> {
     static Array<T> inner(const U &self) {
         if (self->empty()) { return Array<T>{}; }
 
-        Array other{self->size()};
+        Array<T> other{self->size()};
         for (size_t i = 0; i < self->size(); ++i) { other.begin()[i] = self.begin()[i]; }
         return other;
     }
@@ -244,7 +246,7 @@ public:
 
     MutSlice<T> operator[](Range range) {
         if (range.end() == 0) { range = Range{range.begin(), sub_type()->size()}; }
-        if (range.begin() == range.end()) { return MutSlice<T> {}; }
+        if (range.begin() == range.end()) { return MutSlice<T>{}; }
 
         if (range.begin() > range.end() || range.end() > sub_type()->size()) {
             cs120_abort("index out of boundary!");

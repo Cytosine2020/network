@@ -5,15 +5,40 @@
 
 
 namespace cs120 {
-TCPServer::TCPServer(std::unique_ptr<BaseSocket> device, uint32_t src_ip, uint32_t dest_ip,
-                     uint16_t src_port, uint16_t dest_port, TCPState status) :
-        device{std::move(device)}, src_ip{src_ip}, dest_ip{dest_ip},
-        src_port{src_port}, dest_port{dest_port}, identifier{1},
-        status{status}, src_seq{0}, dest_seq{0} {}
+TCPServer::TCPServer(std::unique_ptr<BaseSocket> device, size_t size,
+                     uint32_t src_ip, uint32_t dest_ip, uint16_t src_port, uint16_t dest_port,
+                     TCPState status) :
+        device{std::move(device)}, send_queue{}, recv_queue{},
+        src_ip{src_ip}, dest_ip{dest_ip}, src_port{src_port}, dest_port{dest_port},
+        identifier{1}, status{status}, window{0}, src_seq{0}, dest_seq{0} {
+    auto[send, recv] = this->device->bind([=](auto ip_header, auto ip_option, auto ip_data) {
+        (void) ip_option;
+        (void) ip_data;
 
-TCPServer TCPServer::accept(std::unique_ptr<BaseSocket> device, uint32_t src_ip, uint32_t dest_ip,
+        if (ip_header->get_protocol() != IPV4Protocol::TCP ||
+            ip_header->get_src_ip() != dest_ip ||
+            ip_header->get_dest_ip() != src_ip) { return false; }
+
+        auto[tcp_header, tcp_option, tcp_data] = tcp_split(ip_data);
+        if (tcp_header == nullptr) {
+            cs120_warn("invalid package!");
+            return false;
+        }
+
+        if (tcp_header->get_src_port() != dest_port ||
+            tcp_header->get_dest_port() != src_port) { return false; }
+
+        return true;
+    }, size);
+
+    send_queue = std::move(send);
+    recv_queue = std::move(recv);
+}
+
+TCPServer TCPServer::accept(std::unique_ptr<BaseSocket> device, size_t size,
+                            uint32_t src_ip, uint32_t dest_ip,
                             uint16_t src_port, uint16_t dest_port) {
-    auto server = TCPServer{std::move(device), src_ip, dest_ip,
+    auto server = TCPServer{std::move(device), size, src_ip, dest_ip,
                             src_port, dest_port, TCPState::Listen};
 
     server.accept();
@@ -23,7 +48,7 @@ TCPServer TCPServer::accept(std::unique_ptr<BaseSocket> device, uint32_t src_ip,
 
 void TCPServer::accept() {
     for (;;) {
-        auto buffer = device->recv();
+        auto buffer = recv_queue->recv();
 
         auto[ip_header, ip_option, ip_data] = ipv4_split((*buffer)[Range{}]);
         if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
@@ -31,18 +56,11 @@ void TCPServer::accept() {
             continue;
         }
 
-        if (ip_header->get_protocol() != IPV4Protocol::TCP ||
-            ip_header->get_src_ip() != dest_ip ||
-            ip_header->get_dest_ip() != src_ip) { continue; }
-
         auto[tcp_header, tcp_option, tcp_data] = tcp_split(ip_data);
         if (tcp_header == nullptr || complement_checksum(*ip_header, ip_data) != 0) {
             cs120_warn("invalid package!");
             continue;
         }
-
-        if (tcp_header->get_src_port() != dest_port ||
-            tcp_header->get_dest_port() != src_port) { continue; }
 
         switch (status) {
             case TCPState::Listen:
@@ -51,7 +69,7 @@ void TCPServer::accept() {
                         dest_seq = tcp_header->get_sequence() + 1;
                         window = tcp_header->get_window();
 
-                        auto send = device->send();
+                        auto send = send_queue.send();
 
                         TCPHeader::generate_sync_ack((*send)[Range{}], identifier++,
                                                      src_ip, dest_ip, src_port, dest_port,
@@ -110,7 +128,7 @@ void TCPServer::accept() {
 
 ssize_t TCPServer::send(cs120::Slice<uint8_t> data) {
     {
-        auto buffer = device->send();
+        auto buffer = send_queue.send();
 
         TCPHeader::generate_ack((*buffer)[Range{}], identifier++, src_ip, dest_ip,
                                 src_port, dest_port, src_seq, dest_seq,
@@ -121,7 +139,7 @@ ssize_t TCPServer::send(cs120::Slice<uint8_t> data) {
     }
 
     for (;;) {
-        auto buffer = device->recv();
+        auto buffer = recv_queue->recv();
 
         auto[ip_header, ip_option, ip_data] = ipv4_split((*buffer)[Range{}]);
         if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
@@ -129,18 +147,11 @@ ssize_t TCPServer::send(cs120::Slice<uint8_t> data) {
             continue;
         }
 
-        if (ip_header->get_protocol() != IPV4Protocol::TCP ||
-            ip_header->get_src_ip() != dest_ip ||
-            ip_header->get_dest_ip() != src_ip) { continue; }
-
         auto[tcp_header, tcp_option, tcp_data] = tcp_split(ip_data);
         if (tcp_header == nullptr || complement_checksum(*ip_header, ip_data) != 0) {
             cs120_warn("invalid package!");
             continue;
         }
-
-        if (tcp_header->get_src_port() != dest_port ||
-            tcp_header->get_dest_port() != src_port) { continue; }
 
         switch (status) {
             case TCPState::Established:
@@ -182,7 +193,7 @@ ssize_t TCPServer::send(cs120::Slice<uint8_t> data) {
 
 ssize_t TCPServer::recv(cs120::MutSlice<uint8_t> data) {
     for (;;) {
-        auto buffer = device->recv();
+        auto buffer = recv_queue->recv();
 
         auto[ip_header, ip_option, ip_data] = ipv4_split((*buffer)[Range{}]);
         if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
@@ -190,18 +201,11 @@ ssize_t TCPServer::recv(cs120::MutSlice<uint8_t> data) {
             continue;
         }
 
-        if (ip_header->get_protocol() != IPV4Protocol::TCP ||
-            ip_header->get_src_ip() != dest_ip ||
-            ip_header->get_dest_ip() != src_ip) { continue; }
-
         auto[tcp_header, tcp_option, tcp_data] = tcp_split(ip_data);
         if (tcp_header == nullptr || complement_checksum(*ip_header, ip_data) != 0) {
             cs120_warn("invalid package!");
             continue;
         }
-
-        if (tcp_header->get_src_port() != dest_port ||
-            tcp_header->get_dest_port() != src_port) { continue; }
 
         switch (status) {
             case TCPState::Established:
@@ -213,8 +217,7 @@ ssize_t TCPServer::recv(cs120::MutSlice<uint8_t> data) {
 
                             data[Range{0, tcp_data.size()}].copy_from_slice(tcp_data);
 
-                            auto send = device->send();
-
+                            auto send = send_queue.send();
                             TCPHeader::generate_ack((*send)[Range{}], identifier++,
                                                     src_ip, dest_ip, src_port, dest_port,
                                                     src_seq, dest_seq,
@@ -230,17 +233,16 @@ ssize_t TCPServer::recv(cs120::MutSlice<uint8_t> data) {
                             dest_seq += 1;
 
 //                            {
-//                                auto send = device->send();
-//
-//                                TCPHeader::generate_ack(*send, identifier++, src_ip, dest_ip,
-//                                                        src_port, dest_port, src_seq, dest_seq,
+//                                auto send = send_queue.send();
+//                                TCPHeader::generate_ack((*send)[Range{}], identifier++,
+//                                                        src_ip, dest_ip, src_port, dest_port,
+//                                                        src_seq, dest_seq,
 //                                                        false, false, false, false, false,
 //                                                        window, Slice<uint8_t>{});
 //                            }
 
                             {
-                                auto send = device->send();
-
+                                auto send = send_queue.send();
                                 TCPHeader::generate_fin((*send)[Range{}], identifier++,
                                                         src_ip, dest_ip, src_port, dest_port,
                                                         src_seq++, dest_seq,
@@ -298,7 +300,7 @@ ssize_t TCPServer::recv(cs120::MutSlice<uint8_t> data) {
 
 void TCPServer::close() {
     {
-        auto send = device->send();
+        auto send = send_queue.send();
         TCPHeader::generate_fin((*send)[Range{}], identifier++, src_ip, dest_ip,
                                 src_port, dest_port, src_seq++, dest_seq,
                                 false, false, false, false, true, false,
@@ -308,25 +310,18 @@ void TCPServer::close() {
     status = TCPState::FinWait1;
 
     for (;;) {
-        auto buffer = device->recv();
+        auto buffer = recv_queue->recv();
         auto[ip_header, ip_option, ip_data] = ipv4_split((*buffer)[Range{}]);
         if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
             cs120_warn("invalid package!");
             continue;
         }
 
-        if (ip_header->get_protocol() != IPV4Protocol::TCP ||
-            ip_header->get_src_ip() != dest_ip ||
-            ip_header->get_dest_ip() != src_ip) { continue; }
-
         auto[tcp_header, tcp_option, tcp_data] = tcp_split(ip_data);
         if (tcp_header == nullptr || complement_checksum(*ip_header, ip_data) != 0) {
             cs120_warn("invalid package!");
             continue;
         }
-
-        if (tcp_header->get_src_port() != dest_port ||
-            tcp_header->get_dest_port() != src_port) { continue; }
 
         switch (status) {
             case TCPState::FinWait1:
@@ -345,7 +340,7 @@ void TCPServer::close() {
                             dest_seq += 1;
 
                             {
-                                auto send = device->send();
+                                auto send = send_queue.send();
                                 TCPHeader::generate_ack((*send)[Range{}], identifier++,
                                                         src_ip, dest_ip, src_port, dest_port,
                                                         src_seq, dest_seq,

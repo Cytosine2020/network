@@ -1,9 +1,11 @@
+#include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 
 #include "wire/wire.hpp"
-#include "device/raw_socket.hpp"
+#include "device/athernet_socket.hpp"
+#include "device/unix_socket.hpp"
 #include "server/udp_server.hpp"
 
 
@@ -18,8 +20,7 @@ int main(int argc, char **argv) {
     auto command = argv[4];
     auto file_name = argv[5];
 
-    auto src_ip = get_local_ip();
-    uint16_t src_port = std::stoi(src);
+    auto[src_ip, src_port] = parse_ip_address(src);
     auto[dest_ip, dest_port] = parse_ip_address(dest);
 
     printf("local %s:%d\n", inet_ntoa(in_addr{src_ip}), src_port);
@@ -41,9 +42,20 @@ int main(int argc, char **argv) {
 
         Slice<uint8_t> data{reinterpret_cast<uint8_t *>(buffer), static_cast<size_t>(tmp.st_size)};
 
-        if (strcmp(device, "-a") == 0) {
-            std::unique_ptr<BaseSocket> sock(new RawSocket{64, get_local_ip()});
-            UDPServer server{std::move(sock), src_ip, dest_ip, src_port, dest_port};
+        if (strcmp(device, "-a") == 0 || strcmp(device, "-e") == 0) {
+            std::shared_ptr<BaseSocket> sock{};
+
+            if (strcmp(device, "-a") == 0) {
+                sock = std::shared_ptr<BaseSocket>{new UnixSocket{64}};
+            } else if (strcmp(device, "-e") == 0) {
+                sock = std::shared_ptr<BaseSocket>{new AthernetSocket{64}};
+            } else {
+                cs120_unreachable("");
+            }
+
+            UDPServer server{std::move(sock), 64, src_ip, dest_ip, src_port, dest_port};
+
+            sleep(1); // FIXME: the filter is not updated quick enough
 
             size_t i = 0, j = 0;
             for (; i < data.size(); ++i) {
@@ -55,7 +67,7 @@ int main(int argc, char **argv) {
             }
 
             if (j < i) { server.send(data[Range{j, i}]); }
-        } else if (strcmp(device, "-e") == 0) {
+        } else if (strcmp(device, "-s") == 0) {
             if (argc < 2) { cs120_abort("need option\n"); }
 
             int sock = socket(AF_INET, SOCK_DGRAM, 0);
@@ -67,7 +79,7 @@ int main(int argc, char **argv) {
             src_addr.sin_addr = in_addr{htonl(INADDR_ANY)};
 
             if (bind(sock, reinterpret_cast<const sockaddr *>(&src_addr),
-                     sizeof(struct sockaddr_in))) { cs120_abort("bind error"); }
+                     sizeof(struct sockaddr_in))) { cs120_abort("send error"); }
 
             struct sockaddr_in dest_addr{};
             dest_addr.sin_family = AF_INET;
@@ -110,9 +122,18 @@ int main(int argc, char **argv) {
 
         Array<uint8_t> buffer{2048};
 
-        if (strcmp(device, "-a") == 0) {
-            std::unique_ptr<BaseSocket> sock(new RawSocket{64, get_local_ip()});
-            UDPServer server{std::move(sock), src_ip, dest_ip, src_port, dest_port};
+        if (strcmp(device, "-a") == 0 || strcmp(device, "-e") == 0) {
+            std::shared_ptr<BaseSocket> sock{};
+
+            if (strcmp(device, "-a") == 0) {
+                sock = std::shared_ptr<BaseSocket>{new UnixSocket{64}};
+            } else if (strcmp(device, "-e") == 0) {
+                sock = std::shared_ptr<BaseSocket>{new AthernetSocket{64}};
+            } else {
+                cs120_unreachable("");
+            }
+
+            UDPServer server{std::move(sock), 64, src_ip, dest_ip, src_port, dest_port};
 
             for (;;) {
                 size_t size = server.recv(buffer[Range{}]);
@@ -125,7 +146,7 @@ int main(int argc, char **argv) {
                 printf("%s:%u: ", inet_ntoa(in_addr{dest_ip}), dest_port);
                 printf("%.*s\n", static_cast<uint32_t>(size), buffer.begin());
             }
-        } else if (strcmp(device, "-e") == 0) {
+        } else if (strcmp(device, "-s") == 0) {
             int sock = socket(AF_INET, SOCK_DGRAM, 0);
             if (sock < 0) { cs120_abort("socket error"); }
 
@@ -135,7 +156,7 @@ int main(int argc, char **argv) {
             src_addr.sin_addr = in_addr{htonl(INADDR_ANY)};
 
             if (bind(sock, reinterpret_cast<const sockaddr *>(&src_addr),
-                     sizeof(struct sockaddr_in))) { cs120_abort("bind error"); }
+                     sizeof(struct sockaddr_in))) { cs120_abort("send error"); }
 
             Array<uint8_t> slice{2048};
 

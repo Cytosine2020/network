@@ -8,8 +8,9 @@
 namespace cs120 {
 class UDPServer {
 private:
-    std::unique_ptr<BaseSocket> device;
-
+    std::shared_ptr<BaseSocket> device;
+    MPSCQueue<PacketBuffer>::Sender send_queue;
+    Demultiplexer::ReceiverGuard recv_queue;
     uint32_t src_ip, dest_ip;
     uint16_t src_port, dest_port;
     Array<uint8_t> receive_buffer;
@@ -17,12 +18,8 @@ private:
     uint16_t identifier;
 
 public:
-    UDPServer(std::unique_ptr<BaseSocket> device, uint32_t src_ip, uint32_t dest_ip,
-              uint16_t src_port, uint16_t dest_port) :
-            device{std::move(device)}, src_ip{src_ip}, dest_ip{dest_ip},
-            src_port{src_port}, dest_port{dest_port},
-            receive_buffer{this->device->get_mtu()},
-            receive_buffer_slice{}, identifier{1} {}
+    UDPServer(std::shared_ptr<BaseSocket> device,  size_t size,
+              uint32_t src_ip, uint32_t dest_ip, uint16_t src_port, uint16_t dest_port);
 
     UDPServer(UDPServer &&other) noexcept = default;
 

@@ -15,8 +15,8 @@ namespace cs120 {
 class UnixSocket : public BaseSocket {
 private:
     pthread_t receiver, sender;
-    MPSCReceiver<PacketBuffer> recv_queue;
-    MPSCSender<PacketBuffer> send_queue;
+    Demultiplexer::RequestSender recv_queue;
+    MPSCQueue<PacketBuffer>::Sender send_queue;
     int athernet;
 
 public:
@@ -28,13 +28,10 @@ public:
 
     size_t get_mtu() final { return ATHERNET_MTU - 1; }
 
-    MPSCSenderSlotGuard<PacketBuffer> try_send() final { return send_queue.try_send(); }
-
-    MPSCSenderSlotGuard<PacketBuffer> send() final { return send_queue.send(); }
-
-    MPSCReceiverSlotGuard<PacketBuffer> try_recv() final { return recv_queue.try_recv(); }
-
-    MPSCReceiverSlotGuard<PacketBuffer> recv() final { return recv_queue.recv(); }
+    std::pair<MPSCQueue<PacketBuffer>::Sender, Demultiplexer::ReceiverGuard>
+    bind(Demultiplexer::Condition &&condition, size_t size) final {
+        return std::make_pair(send_queue, recv_queue.send(std::move(condition), size));
+    }
 
     ~UnixSocket() override {
         pthread_join(receiver, nullptr);

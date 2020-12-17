@@ -10,7 +10,8 @@ namespace cs120 {
 void *unix_socket_sender(void *args_) {
     auto *args = static_cast<unix_socket_send_args *>(args_);
 
-    Array<uint8_t> buffer{ATHERNET_MTU};
+    Array<uint8_t> mem{ATHERNET_MTU + 3};
+    auto buffer = mem[Range{3}];
 
     for (;;) {
         auto slot = args->queue.recv();
@@ -39,20 +40,19 @@ void *unix_socket_sender(void *args_) {
 void *unix_socket_receiver(void *args_) {
     auto *args = static_cast<unix_socket_recv_args *>(args_);
 
-    Array<uint8_t> buffer{ATHERNET_MTU};
+    Array<uint8_t> mem{ATHERNET_MTU + 3};
+    auto buffer = mem[Range{3}];
 
     for (;;) {
         ssize_t len = recv(args->athernet, buffer.begin(), ATHERNET_MTU, 0);
+
+        args->demultiplexer.update();
+
         if (len == 0) { return nullptr; }
         if (len != ATHERNET_MTU) { cs120_abort("recv error"); }
 
-        auto slot = args->queue.try_send();
-        if (slot->empty()) {
-            cs120_warn("package loss!");
-        } else {
-            size_t size = buffer[0];
-            (*slot)[Range{0, size}].copy_from_slice(buffer[Range{1, size + 1}]);
-        }
+        size_t size = buffer[0];
+        args->demultiplexer.send(buffer[Range{1, size + 1}]);
     }
 }
 }

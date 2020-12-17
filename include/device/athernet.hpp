@@ -15,12 +15,12 @@ constexpr size_t ATHERNET_MTU = 256;
 
 struct unix_socket_recv_args {
     int athernet;
-    MPSCSender<PacketBuffer> queue;
+    Demultiplexer demultiplexer;
 };
 
 struct unix_socket_send_args {
     int athernet;
-    MPSCReceiver<PacketBuffer> queue;
+    MPSCQueue<PacketBuffer>::Receiver queue;
 };
 
 void *unix_socket_sender(void *args_);

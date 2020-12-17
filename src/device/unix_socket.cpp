@@ -10,12 +10,8 @@
 
 namespace cs120 {
 UnixSocket::UnixSocket(size_t size) :
-        receiver{}, sender{}, recv_queue{nullptr}, send_queue{nullptr}, athernet{-1} {
-    auto[recv_sender, recv_receiver] = MPSCQueue<PacketBuffer>::channel(size);
+        receiver{}, sender{}, recv_queue{}, send_queue{}, athernet{-1} {
     auto[send_sender, send_receiver] = MPSCQueue<PacketBuffer>::channel(size);
-
-    recv_queue = std::move(recv_receiver);
-    send_queue = std::move(send_sender);
 
     athernet = socket(AF_UNIX, SOCK_STREAM, 0);
 
@@ -32,13 +28,16 @@ UnixSocket::UnixSocket(size_t size) :
 
     auto *receiver_args = new unix_socket_recv_args{
             .athernet = athernet,
-            .queue = std::move(recv_sender),
+            .demultiplexer = Demultiplexer{size},
     };
 
     auto *sender_args = new unix_socket_send_args{
             .athernet = athernet,
             .queue = std::move(send_receiver),
     };
+
+    recv_queue = receiver_args->demultiplexer.get_sender();
+    send_queue = std::move(send_sender);
 
     pthread_create(&receiver, nullptr, unix_socket_receiver, receiver_args);
     pthread_create(&sender, nullptr, unix_socket_sender, sender_args);

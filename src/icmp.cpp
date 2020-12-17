@@ -17,11 +17,11 @@ int main(int argc, char **argv) {
     auto src = argv[2];
     auto dest = argv[3];
 
-    std::unique_ptr<BaseSocket> sock = nullptr;
+    std::shared_ptr<BaseSocket> sock = nullptr;
     if (strcmp(device, "-a") == 0) {
-        sock = std::unique_ptr<BaseSocket>{new UnixSocket{64}};
+        sock = std::shared_ptr<BaseSocket>{new UnixSocket{64}};
     } else if (strcmp(device, "-e") == 0) {
-        sock = std::unique_ptr<BaseSocket>{new AthernetSocket{64}};
+        sock = std::shared_ptr<BaseSocket>{new AthernetSocket{64}};
     } else {
         cs120_abort("unknown command");
     }
@@ -32,11 +32,14 @@ int main(int argc, char **argv) {
     printf("local %s:%d\n", inet_ntoa(in_addr{src_ip}), src_port);
     printf("remote %s:%d\n", inet_ntoa(in_addr{dest_ip}), dest_port);
 
-    ICMPServer server{std::move(sock), 56789};
+    ICMPServer server{std::move(sock), src_ip};
+    auto client = server.create_ping(56789, dest_ip, src_port, dest_port);
+
+    sleep(1); // FIXME: the filter is not updated quick enough
 
     for (size_t i = 0; i < 10; ++i) {
         auto start = std::chrono::steady_clock::now();
-        if (server.ping(i, src_ip, dest_ip, src_port, dest_port)) {
+        if (client.ping(i)) {
             auto end = std::chrono::steady_clock::now();
             std::cout << "ping " << i << ": "
                       << std::chrono::duration<double, std::milli>(end - start).count()

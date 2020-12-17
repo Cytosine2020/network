@@ -4,12 +4,13 @@
 
 
 namespace cs120 {
-NatServer::NatServer(uint32_t ip_addr, std::unique_ptr<BaseSocket> lan,
-                     std::unique_ptr<BaseSocket> wan,
+NatServer::NatServer(uint32_t lan_addr, uint32_t wan_addr, std::shared_ptr<BaseSocket> lan,
+                     std::shared_ptr<BaseSocket> wan, size_t size,
                      const Array<std::pair<uint32_t, uint16_t>> &map_addr) :
         lan_to_wan{}, wan_to_lan{}, lan{std::move(lan)}, wan{std::move(wan)},
+        lan_sender{}, wan_sender{}, lan_receiver{}, wan_receiver{},
         nat_table{NAT_PORTS_SIZE}, nat_reverse_table{},
-        lowest_free_port{NAT_PORTS_BASE}, ip_addr{ip_addr} {
+        lowest_free_port{NAT_PORTS_BASE}, wan_addr{wan_addr} {
     for (auto &[src_ip, lan_port]: map_addr) {
         if (lowest_free_port >= NAT_PORTS_BASE + NAT_PORTS_SIZE) {
             cs120_abort("nat ports used up!");
@@ -25,18 +26,44 @@ NatServer::NatServer(uint32_t ip_addr, std::unique_ptr<BaseSocket> lan,
                lan_port, wan_port);
     }
 
+    uint32_t sub_net_mask = inet_addr("255.255.255.0");
+    uint32_t sub_net_addr = inet_addr("192.168.1.0");
+
+    auto[lan_send, lan_recv] = this->lan->bind([=](auto ip_header, auto ip_option, auto ip_data) {
+        (void) ip_option;
+        (void) ip_data;
+
+        if (ip_header->get_src_ip() == lan_addr ||
+            (ip_header->get_dest_ip() & sub_net_mask) == sub_net_addr ||
+            ip_header->get_time_to_live() == 0) { return false; }
+
+        return true;
+    }, size);
+
+    auto[wan_send, wan_recv] = this->wan->bind([=](auto ip_header, auto ip_option, auto ip_data) {
+        (void) ip_option;
+        (void) ip_data;
+
+        if (ip_header->get_dest_ip() != wan_addr ||
+            ip_header->get_time_to_live() == 0) { return false; }
+
+        return true;
+    }, size);
+
+    lan_sender = std::move(lan_send);
+    wan_sender = std::move(wan_send);
+    lan_receiver = std::move(lan_recv);
+    wan_receiver = std::move(wan_recv);
+
     pthread_create(&lan_to_wan, nullptr, nat_lan_to_wan, this);
     pthread_create(&wan_to_lan, nullptr, nat_wan_to_lan, this);
 }
 
 void NatServer::nat_lan_to_wan() {
-    uint32_t sub_net_mask = inet_addr("255.255.255.0");
-    uint32_t sub_net_addr = inet_addr("192.168.1.0");
-
     size_t wan_mtu = wan->get_mtu();
 
     for (;;) {
-        auto receive = lan->recv();
+        auto receive = lan_receiver->recv();
 
         auto[ip_header, ip_option, ip_data] = ipv4_split((*receive)[Range{}]);
         if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
@@ -44,16 +71,9 @@ void NatServer::nat_lan_to_wan() {
             continue;
         }
 
-        if (ip_header->get_time_to_live() == 0) { continue; }
-
         uint32_t src_ip = ip_header->get_src_ip();
-        uint32_t dest_ip = ip_header->get_dest_ip();
 
-        // drop if send to subnet
-        if (src_ip == ip_addr) { continue; }
-        if ((dest_ip & sub_net_mask) == sub_net_addr) { continue; }
-
-        uint16_t lan_port = 0;
+        uint16_t lan_port;
         switch (ip_header->get_protocol()) {
             case IPV4Protocol::ICMP: {
                 auto *icmp_header = ip_data.buffer_cast<ICMPHeader>();
@@ -122,7 +142,7 @@ void NatServer::nat_lan_to_wan() {
         }
 
         ip_header->set_time_to_live(ip_header->get_time_to_live() - 1);
-        ip_header->set_src_ip(ip_addr);
+        ip_header->set_src_ip(wan_addr);
         ip_header->set_checksum(0);
         ip_header->set_checksum(complement_checksum(ip_header->into_slice()));
 
@@ -158,7 +178,7 @@ void NatServer::nat_lan_to_wan() {
                 cs120_unreachable("checked before!");
         }
 
-        auto send = wan->try_send();
+        auto send = wan_sender.try_send();
         if (send->empty()) {
             cs120_warn("package loss!");
         } else {
@@ -171,7 +191,7 @@ void NatServer::nat_wan_to_lan() {
     size_t lan_mtu = lan->get_mtu();
 
     for (;;) {
-        auto receive = wan->recv();
+        auto receive = wan_receiver->recv();
 
         auto[ip_header, ip_option, ip_data] = ipv4_split((*receive)[Range{}]);
         if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
@@ -179,9 +199,7 @@ void NatServer::nat_wan_to_lan() {
             continue;
         }
 
-        if (ip_header->get_time_to_live() == 0) { continue; }
-
-        uint16_t wan_port = 0;
+        uint16_t wan_port;
         switch (ip_header->get_protocol()) {
             case IPV4Protocol::ICMP: {
                 auto *icmp_header = ip_data.buffer_cast<ICMPHeader>();
@@ -273,7 +291,7 @@ void NatServer::nat_wan_to_lan() {
                 cs120_unreachable("checked before!");;
         }
 
-        auto send = lan->try_send();
+        auto send = lan_sender.try_send();
         if (send->empty()) {
             cs120_warn("package loss!");
         } else {

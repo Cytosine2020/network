@@ -30,7 +30,7 @@ private:
 public:
     using Item = std::pair<TCPOption, Slice<uint8_t>>;
 
-    TCPOptionIter(Slice<uint8_t> buffer) : buffer{buffer}, index{0} {}
+    explicit TCPOptionIter(Slice<uint8_t> buffer) : buffer{buffer}, index{0} {}
 
     Item next() {
         if (index + 1 >= buffer.size()) {
@@ -38,7 +38,6 @@ public:
         }
 
         TCPOption option{buffer[index]};
-
         while (option == TCPOption::NoOperation) { option = TCPOption{buffer[++index]}; }
 
         size_t size = buffer[index + 1];
@@ -52,7 +51,7 @@ public:
         }
     }
 
-    bool end(const Item &item) { return item.first == TCPOption::End; }
+    bool end(const Item &item) const { return item.first == TCPOption::End; }
 };
 
 

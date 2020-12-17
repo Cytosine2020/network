@@ -33,11 +33,15 @@ private:
     void nat_wan_to_lan();
 
     pthread_t lan_to_wan, wan_to_lan;
-    std::unique_ptr<BaseSocket> lan, wan;
+    std::shared_ptr<BaseSocket> lan, wan;
+
+    MPSCQueue<PacketBuffer>::Sender lan_sender, wan_sender;
+    Demultiplexer::ReceiverGuard lan_receiver, wan_receiver;
+
     Array<std::atomic<uint64_t>> nat_table;
     std::unordered_map<uint64_t, uint16_t> nat_reverse_table;
     size_t lowest_free_port;
-    uint32_t ip_addr;
+    uint32_t wan_addr;
 
 public:
     static const uint16_t NAT_PORTS_BASE = 50000;
@@ -61,8 +65,9 @@ public:
                (static_cast<uint64_t>(1) << 48u);
     }
 
-    NatServer(uint32_t ip_addr, std::unique_ptr<BaseSocket> lan, std::unique_ptr<BaseSocket> wan,
-              const Array<std::pair<uint32_t, uint16_t>> &map_addr);
+    NatServer(uint32_t lan_addr, uint32_t wan_addr,
+              std::shared_ptr<BaseSocket> lan, std::shared_ptr<BaseSocket> wan,
+              size_t size, const Array<std::pair<uint32_t, uint16_t>> &map_addr);
 
     NatServer(NatServer &&other) = delete;
 
