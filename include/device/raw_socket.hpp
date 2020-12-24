@@ -1,6 +1,7 @@
 #ifndef CS120_RAW_SOCKET_HPP
 #define CS120_RAW_SOCKET_HPP
 
+#include <unistd.h>
 #include "pthread.h"
 
 #include "utility.hpp"

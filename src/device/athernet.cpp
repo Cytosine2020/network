@@ -46,8 +46,6 @@ void *unix_socket_receiver(void *args_) {
     for (;;) {
         ssize_t len = recv(args->athernet, buffer.begin(), ATHERNET_MTU, 0);
 
-        args->demultiplexer.update();
-
         if (len == 0) { return nullptr; }
         if (len != ATHERNET_MTU) { cs120_abort("recv error"); }
 

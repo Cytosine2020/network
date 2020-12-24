@@ -50,14 +50,14 @@ uint32_t get_local_ip() {
     return ip;
 }
 
-std::pair<uint32_t, uint16_t> parse_ip_address(const char *str) {
+EndPoint parse_ip_address(const char *str) {
     uint8_t buffer[4]{};
     uint16_t lan_port = 0;
 
     if (sscanf(str, "%hhd.%hhd.%hhd.%hhd:%hd", &buffer[0], &buffer[1], &buffer[2],
                &buffer[3], &lan_port) != 5) { cs120_abort("input_format_error!"); }
 
-    return std::make_pair(*reinterpret_cast<uint32_t *>(buffer), lan_port);
+    return EndPoint{*reinterpret_cast<uint32_t *>(buffer), lan_port};
 }
 
 void ETHHeader::format() const {

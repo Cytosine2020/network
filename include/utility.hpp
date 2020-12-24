@@ -179,6 +179,22 @@ struct _copy<U, T, false> {
     }
 };
 
+template<typename T, bool = std::is_pod<T>::value>
+struct clear;
+
+template<typename T>
+struct clear<T, true> {
+    static void inner(cs120_unused T &item) {}
+};
+
+template<typename T>
+struct clear<T, false> {
+    static void inner(T &item) {
+        T take{};
+        std::swap(item, take);
+    }
+};
+
 template<typename SubT, typename T>
 struct SliceTrait {
 protected:

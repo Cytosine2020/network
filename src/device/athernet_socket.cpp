@@ -20,7 +20,7 @@ AthernetSocket::AthernetSocket(size_t size) :
     strncpy(addr.sun_path, ATHERNET_SOCKET, sizeof(addr.sun_path) - 1);
 
     if (::bind(sock, reinterpret_cast<struct sockaddr *>(&addr), sizeof(sockaddr_un)) != 0) {
-        cs120_abort("send error");
+        cs120_abort("bind error");
     }
 
     if (listen(sock, 0) != 0) { cs120_abort("listen error"); }

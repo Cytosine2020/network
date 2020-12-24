@@ -40,7 +40,7 @@ public:
         MPSCQueue<PacketBuffer>::Receiver receiver;
 
     public:
-        ReceiverGuard() : filter{nullptr}, sender{}, receiver{} {}
+        ReceiverGuard() noexcept : filter{nullptr}, sender{}, receiver{} {}
 
         ReceiverGuard(
                 std::shared_ptr<Filter> filter,
@@ -68,7 +68,7 @@ public:
         MPSCQueue<Request>::Sender sender;
 
     public:
-        RequestSender() : sender{{nullptr}} {}
+        RequestSender() noexcept : sender{{nullptr}} {}
 
         explicit RequestSender(MPSCQueue<Request>::Sender sender) : sender{std::move(sender)} {}
 
@@ -80,12 +80,6 @@ public:
             }};
 
             { *sender.send() = Request{Request::Add, filter}; }
-
-#if defined(__APPLE__)
-            pthread_yield_np();
-#elif defined(__linux__)
-            pthread_yield();
-#endif
 
             return ReceiverGuard{std::move(filter), sender, std::move(recv)};
         }
@@ -108,7 +102,7 @@ public:
 
     Demultiplexer &operator=(Demultiplexer &&other) noexcept = default;
 
-    void update() {
+    void send(Slice<uint8_t> datagram) {
         for (;;) {
             auto request = receiver.try_recv();
             if (request.empty()) { break; }
@@ -124,9 +118,7 @@ public:
                     cs120_unreachable("unknown request!");
             }
         }
-    }
 
-    void send(Slice<uint8_t> datagram) {
         auto[ip_header, ip_option, ip_data] = ipv4_split(datagram);
         if (ip_header == nullptr) {
             cs120_warn("invalid package!");

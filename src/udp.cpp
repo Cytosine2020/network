@@ -15,16 +15,13 @@ int main(int argc, char **argv) {
     if (argc != 6) { cs120_abort("accept 5 arguments"); }
 
     auto device = argv[1];
-    auto src = argv[2];
-    auto dest = argv[3];
+    auto src = parse_ip_address(argv[2]);
+    auto dest = parse_ip_address(argv[3]);
     auto command = argv[4];
     auto file_name = argv[5];
 
-    auto[src_ip, src_port] = parse_ip_address(src);
-    auto[dest_ip, dest_port] = parse_ip_address(dest);
-
-    printf("local %s:%d\n", inet_ntoa(in_addr{src_ip}), src_port);
-    printf("remote %s:%d\n", inet_ntoa(in_addr{dest_ip}), dest_port);
+    printf("local %s:%d\n", inet_ntoa(in_addr{src.ip_addr}), src.port);
+    printf("remote %s:%d\n", inet_ntoa(in_addr{dest.ip_addr}), dest.port);
 
     if (strcmp(command, "-s") == 0) {
         int file = open(file_name, O_RDONLY);
@@ -53,7 +50,7 @@ int main(int argc, char **argv) {
                 cs120_unreachable("");
             }
 
-            UDPServer server{std::move(sock), 64, src_ip, dest_ip, src_port, dest_port};
+            UDPServer server{std::move(sock), 64, src.ip_addr, dest.ip_addr, src.port, dest.port};
 
             sleep(1); // FIXME: the filter is not updated quick enough
 
@@ -75,7 +72,7 @@ int main(int argc, char **argv) {
 
             struct sockaddr_in src_addr{};
             src_addr.sin_family = AF_INET;
-            src_addr.sin_port = htons(src_port);
+            src_addr.sin_port = htons(src.port);
             src_addr.sin_addr = in_addr{htonl(INADDR_ANY)};
 
             if (bind(sock, reinterpret_cast<const sockaddr *>(&src_addr),
@@ -83,8 +80,8 @@ int main(int argc, char **argv) {
 
             struct sockaddr_in dest_addr{};
             dest_addr.sin_family = AF_INET;
-            dest_addr.sin_port = htons(dest_port);
-            dest_addr.sin_addr = in_addr{dest_ip};
+            dest_addr.sin_port = htons(dest.port);
+            dest_addr.sin_addr = in_addr{dest.ip_addr};
 
             size_t i = 0, j = 0;
             for (; i < data.size(); ++i) {
@@ -133,7 +130,7 @@ int main(int argc, char **argv) {
                 cs120_unreachable("");
             }
 
-            UDPServer server{std::move(sock), 64, src_ip, dest_ip, src_port, dest_port};
+            UDPServer server{std::move(sock), 64, src.ip_addr, dest.ip_addr, src.port, dest.port};
 
             for (;;) {
                 size_t size = server.recv(buffer[Range{}]);
@@ -143,7 +140,7 @@ int main(int argc, char **argv) {
                     cs120_abort("write error");
                 }
 
-                printf("%s:%u: ", inet_ntoa(in_addr{dest_ip}), dest_port);
+                printf("%s:%u: ", inet_ntoa(in_addr{dest.ip_addr}), dest.port);
                 printf("%.*s\n", static_cast<uint32_t>(size), buffer.begin());
             }
         } else if (strcmp(device, "-s") == 0) {
@@ -152,7 +149,7 @@ int main(int argc, char **argv) {
 
             struct sockaddr_in src_addr{};
             src_addr.sin_family = AF_INET;
-            src_addr.sin_port = htons(src_port);
+            src_addr.sin_port = htons(src.port);
             src_addr.sin_addr = in_addr{htonl(INADDR_ANY)};
 
             if (bind(sock, reinterpret_cast<const sockaddr *>(&src_addr),

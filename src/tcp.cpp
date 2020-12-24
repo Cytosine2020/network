@@ -14,16 +14,13 @@ int main(int argc, char **argv) {
     if (argc != 6) { cs120_abort("accept 5 arguments"); }
 
     auto device = argv[1];
-    auto src = argv[2];
-    auto dest = argv[3];
+    auto src = parse_ip_address(argv[2]);
+    auto dest = parse_ip_address(argv[3]);
     auto command = argv[4];
     auto file_name = argv[5];
 
-    auto[src_ip, src_port] = parse_ip_address(src);
-    auto[dest_ip, dest_port] = parse_ip_address(dest);
-
-    printf("local %s:%d\n", inet_ntoa(in_addr{src_ip}), src_port);
-    printf("remote %s:%d\n", inet_ntoa(in_addr{dest_ip}), dest_port);
+    printf("local %s:%d\n", inet_ntoa(in_addr{src.ip_addr}), src.port);
+    printf("remote %s:%d\n", inet_ntoa(in_addr{dest.ip_addr}), dest.port);
 
     if (strcmp(command, "-s") == 0) {
         int file = open(file_name, O_RDONLY);
@@ -42,36 +39,36 @@ int main(int argc, char **argv) {
         Slice<uint8_t> data{reinterpret_cast<uint8_t *>(buffer), static_cast<size_t>(tmp.st_size)};
 
         if (strcmp(device, "-a") == 0) {
-            std::unique_ptr<BaseSocket> sock(new RawSocket{64});
-            auto server = TCPServer::accept(std::move(sock), 64, src_ip, dest_ip,
-                                            src_port, dest_port);
+            std::unique_ptr<BaseSocket> sock{new RawSocket{64}};
+            auto server = TCPServer{std::move(sock), 64, src};
+            auto connect = server.accept();
 
             size_t i = 0, j = 0;
             for (; i < data.size(); ++i) {
                 if (data[i] == '\n') {
-                    server.send(data[Range{j, i + 1}]);
+                    connect.send(data[Range{j, i + 1}]);
                     j = i + 1;
                     sleep(1);
                 }
             }
 
-            if (j < i) { server.send(data[Range{j, i}]); }
+            if (j < i) { connect.send(data[Range{j, i}]); }
         } else if (strcmp(device, "-e") == 0) {
             int sock = socket(AF_INET, SOCK_STREAM, 0);
             if (sock < 0) { cs120_abort("socket error"); }
 
             struct sockaddr_in src_addr{};
             src_addr.sin_family = AF_INET;
-            src_addr.sin_port = htons(src_port);
+            src_addr.sin_port = htons(src.port);
             src_addr.sin_addr = in_addr{htonl(INADDR_ANY)};
 
             if (bind(sock, reinterpret_cast<sockaddr *>(&src_addr),
-                     sizeof(struct sockaddr_in))) { cs120_abort("send error"); }
+                     sizeof(struct sockaddr_in))) { cs120_abort("bind error"); }
 
             struct sockaddr_in dest_addr{};
             dest_addr.sin_family = AF_INET;
-            dest_addr.sin_port = htons(dest_port);
-            dest_addr.sin_addr = in_addr{dest_ip};
+            dest_addr.sin_port = htons(dest.port);
+            dest_addr.sin_addr = in_addr{dest.ip_addr};
 
             if (connect(sock, reinterpret_cast<sockaddr *>(&dest_addr),
                         sizeof(struct sockaddr_in)) < 0) { cs120_abort("connect error"); }
@@ -86,7 +83,7 @@ int main(int argc, char **argv) {
                     }
 
                     j = i + 1;
-                    sleep(1);
+//                    sleep(1);
                 }
             }
 
@@ -97,6 +94,8 @@ int main(int argc, char **argv) {
                     cs120_abort("send error");
                 }
             }
+
+            sleep(1);
 
             close(sock);
         } else {
@@ -113,19 +112,19 @@ int main(int argc, char **argv) {
         Array<uint8_t> buffer{2048};
 
         if (strcmp(device, "-a") == 0) {
-            std::unique_ptr<BaseSocket> sock(new RawSocket{64});
-            auto server = TCPServer::accept(std::move(sock), 64, src_ip, dest_ip,
-                                            src_port, dest_port);
+            std::unique_ptr<BaseSocket> sock{new RawSocket{64}};
+            auto server = TCPServer{std::move(sock), 64, src};
+            auto connect = server.accept();
 
             for (;;) {
-                size_t size = server.recv(buffer[Range{}]);
+                size_t size = connect.recv(buffer[Range{}]);
                 if (size == 0) { break; }
 
                 if (static_cast<size_t>(write(file, buffer.begin(), size)) != size) {
                     cs120_abort("write error");
                 }
 
-                printf("%s:%u: ", inet_ntoa(in_addr{dest_ip}), dest_port);
+                printf("%s:%u: ", inet_ntoa(in_addr{dest.ip_addr}), dest.port);
                 printf("%.*s\n", static_cast<uint32_t>(size), buffer.begin());
             }
         } else if (strcmp(device, "-e") == 0) {
@@ -134,7 +133,7 @@ int main(int argc, char **argv) {
 
             struct sockaddr_in src_addr{};
             src_addr.sin_family = AF_INET;
-            src_addr.sin_port = htons(src_port);
+            src_addr.sin_port = htons(src.port);
             src_addr.sin_addr = in_addr{htonl(INADDR_ANY)};
 
             if (bind(sock, reinterpret_cast<sockaddr *>(&src_addr),
@@ -142,8 +141,8 @@ int main(int argc, char **argv) {
 
             struct sockaddr_in dest_addr{};
             dest_addr.sin_family = AF_INET;
-            dest_addr.sin_port = htons(dest_port);
-            dest_addr.sin_addr = in_addr{dest_ip};
+            dest_addr.sin_port = htons(dest.port);
+            dest_addr.sin_addr = in_addr{dest.ip_addr};
 
             if (connect(sock, reinterpret_cast<sockaddr *>(&dest_addr),
                         sizeof(struct sockaddr_in)) < 0) { cs120_abort("connect error"); }

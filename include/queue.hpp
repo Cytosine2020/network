@@ -163,7 +163,7 @@ public:
         sender_lock.unlock();
 
         std::unique_lock<std::mutex> guard{lock};
-        empty.notify_all();
+        empty.notify_one();
     }
 
     ReceiverSlotGuard try_recv() {
@@ -213,13 +213,13 @@ public:
     }
 
     void claim() {
-        T take{};
-        std::swap(inner[start.load()], take);
+        clear<T>::inner(inner[start.load()]);
+
         start.store(index_increase(start.load()));
         receiver_lock.unlock();
 
         std::unique_lock<std::mutex> guard{lock};
-        full.notify_all();
+        full.notify_one();
     }
 
     ~MPSCQueue() = default;

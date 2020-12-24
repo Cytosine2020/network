@@ -142,64 +142,6 @@ public:
         return tcp_size;
     }
 
-    static size_t generate_sync(MutSlice<uint8_t> frame, uint16_t identifier,
-                                uint32_t src_ip, uint32_t dest_ip,
-                                uint16_t src_port, uint16_t dest_port,
-                                uint32_t sequence, uint32_t ack_number,
-                                bool nonce_sum, bool cwr, bool ece,
-                                uint16_t window, Slice<uint8_t> data) {
-        return generate(frame, identifier, src_ip, dest_ip, src_port, dest_port,
-                        sequence, ack_number, nonce_sum, cwr, ece,
-                        false, false, false, false, true, false, window, data);
-    }
-
-    static size_t generate_sync_ack(MutSlice<uint8_t> frame, uint16_t identifier,
-                                    uint32_t src_ip, uint32_t dest_ip,
-                                    uint16_t src_port, uint16_t dest_port,
-                                    uint32_t sequence, uint32_t ack_number,
-                                    bool nonce_sum, bool cwr, bool ece,
-                                    uint16_t window, Slice<uint8_t> data) {
-        return generate(frame, identifier, src_ip, dest_ip, src_port, dest_port,
-                        sequence, ack_number, nonce_sum, cwr, ece,
-                        false, true, false, false, true, false, window, data);
-    }
-
-    static size_t generate_ack(MutSlice<uint8_t> frame, uint16_t identifier,
-                               uint32_t src_ip, uint32_t dest_ip,
-                               uint16_t src_port, uint16_t dest_port,
-                               uint32_t sequence, uint32_t ack_number,
-                               bool nonce_sum, bool cwr, bool ece,
-                               bool urgent, bool push,
-                               uint16_t window, Slice<uint8_t> data) {
-        return generate(frame, identifier, src_ip, dest_ip, src_port, dest_port,
-                        sequence, ack_number, nonce_sum, cwr, ece,
-                        urgent, true, push, false, false, false, window, data);
-    }
-
-    static size_t generate_fin(MutSlice<uint8_t> frame, uint16_t identifier,
-                               uint32_t src_ip, uint32_t dest_ip,
-                               uint16_t src_port, uint16_t dest_port,
-                               uint32_t sequence, uint32_t ack_number,
-                               bool nonce_sum, bool cwr, bool ece,
-                               bool urgent, bool ack, bool push,
-                               uint16_t window, Slice<uint8_t> data) {
-        return generate(frame, identifier, src_ip, dest_ip, src_port, dest_port,
-                        sequence, ack_number, nonce_sum, cwr, ece, urgent,
-                        ack, push, false, false, true, window, data);
-    }
-
-    static size_t generate_reset(MutSlice <uint8_t> frame, uint16_t identifier,
-                                 uint32_t src_ip, uint32_t dest_ip,
-                                 uint16_t src_port, uint16_t dest_port,
-                                 uint32_t sequence, uint32_t ack_number,
-                                 bool nonce_sum, bool cwr, bool ece,
-                                 bool urgent, bool ack, bool push,
-                                 uint16_t window, Slice<uint8_t> data) {
-        return generate(frame, identifier, src_ip, dest_ip, src_port, dest_port,
-                        sequence, ack_number, nonce_sum, cwr, ece, urgent,
-                        ack, push, true, false, false, window, data);
-    }
-
     static const TCPHeader *from_slice(Slice <uint8_t> data) {
         auto *result = reinterpret_cast<const TCPHeader *>(data.begin());
         if (data.size() < result->get_header_length() ||

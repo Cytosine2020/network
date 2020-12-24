@@ -14,8 +14,8 @@ int main(int argc, char **argv) {
     if (argc != 4) { cs120_abort("accept 3 arguments"); }
 
     auto device = argv[1];
-    auto src = argv[2];
-    auto dest = argv[3];
+    auto src = parse_ip_address(argv[2]);
+    auto dest = parse_ip_address(argv[3]);
 
     std::shared_ptr<BaseSocket> sock = nullptr;
     if (strcmp(device, "-a") == 0) {
@@ -26,14 +26,11 @@ int main(int argc, char **argv) {
         cs120_abort("unknown command");
     }
 
-    auto[src_ip, src_port] = parse_ip_address(src);
-    auto[dest_ip, dest_port] = parse_ip_address(dest);
+    printf("local %s:%d\n", inet_ntoa(in_addr{src.ip_addr}), src.port);
+    printf("remote %s:%d\n", inet_ntoa(in_addr{dest.ip_addr}), dest.port);
 
-    printf("local %s:%d\n", inet_ntoa(in_addr{src_ip}), src_port);
-    printf("remote %s:%d\n", inet_ntoa(in_addr{dest_ip}), dest_port);
-
-    ICMPServer server{std::move(sock), src_ip};
-    auto client = server.create_ping(56789, dest_ip, src_port, dest_port);
+    ICMPServer server{std::move(sock), src.ip_addr};
+    auto client = server.create_ping(56789, dest.ip_addr, src.port, dest.port);
 
     sleep(1); // FIXME: the filter is not updated quick enough
 

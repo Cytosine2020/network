@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <utility>
+#include <functional>
 #include <arpa/inet.h>
 
 #include "utility.hpp"
@@ -36,7 +37,24 @@ uint16_t complement_checksum(Slice<uint8_t> buffer);
 
 uint32_t get_local_ip();
 
-std::pair<uint32_t, uint16_t> parse_ip_address(const char *str);
+
+struct EndPoint {
+    uint32_t ip_addr;
+    uint16_t port;
+
+    EndPoint() noexcept : ip_addr{0}, port{0} {}
+
+    EndPoint(uint32_t ip_addr, uint16_t port) : ip_addr{ip_addr}, port{port} {}
+
+    bool operator==(const EndPoint &other) const {
+        return this->ip_addr == other.ip_addr && this->port == other.port;
+    }
+
+    bool empty() const { return *this == EndPoint{}; }
+};
+
+
+EndPoint parse_ip_address(const char *str);
 
 using MacAddr = uint8_t[6];
 
@@ -60,6 +78,15 @@ struct ETHHeader {
     void format() const;
 }__attribute__((packed));
 }
+
+
+template<>
+struct std::hash<cs120::EndPoint> {
+    size_t operator()(const cs120::EndPoint &object) const {
+        return std::hash<uint64_t>{}(static_cast<uint64_t>(object.ip_addr) +
+                                     (static_cast<uint64_t>(object.port) << 32));
+    }
+};
 
 
 #endif //CS120_WIRE_HPP
