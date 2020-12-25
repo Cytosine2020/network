@@ -47,7 +47,7 @@ private:
     void icmp_receiver();
 
 public:
-    explicit ICMPServer(std::shared_ptr<BaseSocket> device, uint32_t ip_addr);
+    explicit ICMPServer(std::shared_ptr<BaseSocket> &device, uint32_t ip_addr);
 
     ICMPServer(ICMPServer &&other) noexcept = delete;
 

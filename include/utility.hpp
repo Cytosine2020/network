@@ -211,7 +211,7 @@ public:
 
     Slice<T> operator[](Range range) const {
         if (range.end() == 0) { range = Range{range.begin(), sub_type()->size()}; }
-        if (range.begin() == range.end()) { return Slice<T>{}; }
+        if (range.begin() == range.end()) { return {}; }
 
         if (range.begin() > range.end() || range.end() > sub_type()->size()) {
             cs120_abort("index out of boundary!");
@@ -262,7 +262,7 @@ public:
 
     MutSlice<T> operator[](Range range) {
         if (range.end() == 0) { range = Range{range.begin(), sub_type()->size()}; }
-        if (range.begin() == range.end()) { return MutSlice<T>{}; }
+        if (range.begin() == range.end()) { return {}; }
 
         if (range.begin() > range.end() || range.end() > sub_type()->size()) {
             cs120_abort("index out of boundary!");

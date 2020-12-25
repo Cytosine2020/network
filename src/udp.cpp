@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
                 cs120_unreachable("");
             }
 
-            UDPServer server{std::move(sock), 64, src.ip_addr, dest.ip_addr, src.port, dest.port};
+            UDPServer server{sock, 64, src.ip_addr, dest.ip_addr, src.port, dest.port};
 
             sleep(1); // FIXME: the filter is not updated quick enough
 
@@ -130,7 +130,7 @@ int main(int argc, char **argv) {
                 cs120_unreachable("");
             }
 
-            UDPServer server{std::move(sock), 64, src.ip_addr, dest.ip_addr, src.port, dest.port};
+            UDPServer server{sock, 64, src.ip_addr, dest.ip_addr, src.port, dest.port};
 
             for (;;) {
                 size_t size = server.recv(buffer[Range{}]);

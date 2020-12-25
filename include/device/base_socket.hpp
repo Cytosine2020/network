@@ -40,7 +40,7 @@ public:
         MPSCQueue<PacketBuffer>::Receiver receiver;
 
     public:
-        ReceiverGuard() noexcept : filter{nullptr}, sender{}, receiver{} {}
+        ReceiverGuard() noexcept: filter{nullptr}, sender{}, receiver{} {}
 
         ReceiverGuard(
                 std::shared_ptr<Filter> filter,
@@ -57,7 +57,7 @@ public:
         MPSCQueue<PacketBuffer>::Receiver *operator->() { return &receiver; }
 
         ~ReceiverGuard() {
-            if (filter != nullptr){
+            if (filter != nullptr) {
                 *sender.send() = Request{Request::Remove, std::move(filter)};
             }
         };
@@ -68,7 +68,7 @@ public:
         MPSCQueue<Request>::Sender sender;
 
     public:
-        RequestSender() noexcept : sender{{nullptr}} {}
+        RequestSender() noexcept: sender{{nullptr}} {}
 
         explicit RequestSender(MPSCQueue<Request>::Sender sender) : sender{std::move(sender)} {}
 
@@ -76,7 +76,7 @@ public:
             auto[send, recv] = MPSCQueue<PacketBuffer>::channel(size);
 
             auto filter = std::shared_ptr<Filter>{new Filter{
-                std::move(condition), std::move(send)
+                    std::move(condition), std::move(send)
             }};
 
             { *sender.send() = Request{Request::Add, filter}; }

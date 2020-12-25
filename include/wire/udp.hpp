@@ -29,26 +29,49 @@ public:
         set_checksum(0);
     }
 
-    static size_t generate(MutSlice<uint8_t> frame, uint16_t identifier,
-                           uint32_t src_ip, uint32_t dest_ip,
-                           uint16_t src_port, uint16_t dest_port, Slice<uint8_t> data) {
-        size_t udp_size = sizeof(UDPHeader) + data.size();
+    class Guard {
+    private:
+        const IPV4Header *ip_header;
+        MutSlice<uint8_t> frame;
+        MutSlice<uint8_t> inner;
 
-        size_t ip_header_size = IPV4Header::generate(frame, identifier, IPV4Protocol::UDP,
+    public:
+        Guard() noexcept: ip_header{nullptr}, frame{}, inner{} {}
+
+        Guard(const IPV4Header *ip_header, MutSlice<uint8_t> icmp_frame, MutSlice<uint8_t> inner) :
+                ip_header{ip_header}, frame{icmp_frame} , inner{inner} {}
+
+        Guard(Guard &&other) noexcept = default;
+
+        Guard &operator=(Guard &&other) noexcept = default;
+
+        MutSlice<uint8_t> &operator*() { return inner; }
+
+        MutSlice<uint8_t> *operator->() { return &inner; }
+
+        ~Guard() {
+            auto *udp_header = reinterpret_cast<UDPHeader *>(frame.begin());
+            udp_header->set_checksum_enable(complement_checksum(*ip_header, frame));
+        }
+    };
+
+    static Guard generate(MutSlice<uint8_t> frame, uint16_t identifier,
+                          uint32_t src_ip, uint32_t dest_ip,
+                          uint16_t src_port, uint16_t dest_port, size_t len) {
+        size_t udp_size = sizeof(UDPHeader) + len;
+
+        auto udp_frame = IPV4Header::generate(frame, identifier, IPV4Protocol::UDP,
                                                      src_ip, dest_ip, udp_size);
 
-        auto udp_frame = frame[Range{ip_header_size}];
+        if (udp_frame.empty()) { return {}; }
 
-        auto *udp_header = reinterpret_cast<UDPHeader *>(udp_frame.begin());
-
+        auto *udp_header = reinterpret_cast<UDPHeader *>(frame.begin());
         new(udp_header)UDPHeader{src_port, dest_port, udp_size};
 
-        udp_frame[Range{sizeof(UDPHeader)}][Range{0, data.size()}].copy_from_slice(data);
-
-        auto *ip_header = reinterpret_cast<IPV4Header *>(frame.begin());
-        udp_header->set_checksum_enable(complement_checksum(*ip_header, udp_frame));
-
-        return udp_size;
+        return Guard{
+                reinterpret_cast<IPV4Header *>(frame.begin()),
+                udp_frame, udp_frame[Range{sizeof(UDPHeader)}]
+        };
     }
 
     static const UDPHeader *from_slice(Slice<uint8_t> data) {

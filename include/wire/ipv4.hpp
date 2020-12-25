@@ -47,7 +47,7 @@ private:
 public:
     static size_t max_payload(size_t mtu) { return (mtu - sizeof(IPV4Header)) / 8 * 8; }
 
-    IPV4Header(uint16_t identifier, IPV4Protocol protocol,
+    IPV4Header( uint16_t identifier, IPV4Protocol protocol,
                uint32_t src_ip, uint32_t dest_ip, size_t len) {
         set_header_length(sizeof(IPV4Header));
         set_version();
@@ -62,16 +62,17 @@ public:
         set_dest_ip(dest_ip);
     }
 
-    static size_t generate(MutSlice<uint8_t> frame, uint16_t identifier, IPV4Protocol protocol,
-                           uint32_t src_ip, uint32_t dest_ip, size_t len) {
-        if (frame.size() < sizeof(IPV4Header)) { return 0; }
+    static MutSlice<uint8_t> generate(MutSlice<uint8_t> frame, uint16_t identifier,
+                                      IPV4Protocol protocol, uint32_t src_ip, uint32_t dest_ip,
+                                      size_t len) {
+        if (frame.size() < sizeof(IPV4Header) + len) { return {}; }
 
         auto *ip_header = reinterpret_cast<IPV4Header *>(frame.begin());
         new(ip_header)IPV4Header{identifier, protocol, src_ip, dest_ip, len};
 
         ip_header->set_checksum(complement_checksum(ip_header->into_slice()));
 
-        return sizeof(IPV4Header);
+        return frame[Range{sizeof(IPV4Header)}][Range{0, len}];
     }
 
     Slice<uint8_t> into_slice() const {

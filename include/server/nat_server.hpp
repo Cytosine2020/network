@@ -49,7 +49,7 @@ public:
     static const uint16_t NAT_PORTS_SIZE = 1024;
 
     NatServer(uint32_t lan_addr, uint32_t wan_addr,
-              std::shared_ptr<BaseSocket> lan, std::shared_ptr<BaseSocket> wan,
+              std::shared_ptr<BaseSocket> &lan, std::shared_ptr<BaseSocket> &wan,
               size_t size, const Array<EndPoint> &map_addr);
 
     NatServer(NatServer &&other) = delete;

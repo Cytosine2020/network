@@ -6,13 +6,13 @@
 
 
 namespace cs120 {
-UDPServer::UDPServer(std::shared_ptr<BaseSocket> device, size_t size,
+UDPServer::UDPServer(std::shared_ptr<BaseSocket> &device, size_t size,
                      uint32_t src_ip, uint32_t dest_ip, uint16_t src_port, uint16_t dest_port) :
-        device{std::move(device)}, send_queue{}, recv_queue{},
+        device{device}, send_queue{}, recv_queue{},
         src_ip{src_ip}, dest_ip{dest_ip}, src_port{src_port}, dest_port{dest_port},
-        receive_buffer{this->device->get_mtu()},
+        receive_buffer{device->get_mtu()},
         receive_buffer_slice{}, identifier{1} {
-    auto[send, recv] = this->device->bind([=](auto ip_header, auto ip_option, auto ip_data) {
+    auto[send, recv] = device->bind([=](auto ip_header, auto ip_option, auto ip_data) {
         (void) ip_option;
 
         if (ip_header->get_protocol() != IPV4Protocol::UDP ||
@@ -45,8 +45,11 @@ size_t UDPServer::send(Slice<uint8_t> data) {
 
         size_t size = std::min(maximum, data.size());
 
-        UDPHeader::generate((*buffer)[Range{}], identifier, src_ip, dest_ip, src_port, dest_port,
-                            data[Range{0, size}]);
+        {
+            UDPHeader::generate((*buffer)[Range{}], identifier, src_ip, dest_ip,
+                                src_port, dest_port, size)
+                    ->copy_from_slice(data[Range{0, size}]);
+        }
 
         data = data[Range{size}];
 

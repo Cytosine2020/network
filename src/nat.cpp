@@ -21,5 +21,5 @@ int main(int argc, char **argv) {
     std::shared_ptr<BaseSocket> lan{new UnixSocket{64}};
     std::shared_ptr<BaseSocket> wan{new RawSocket{64}};
 
-    NatServer server{lan_ip, wan_addr, std::move(lan), std::move(wan), 64, ip_map};
+    NatServer server{lan_ip, wan_addr, lan, wan, 64, ip_map};
 }

@@ -112,21 +112,45 @@ public:
         set_urgent_ptr(0);
     }
 
-    static size_t generate(MutSlice<uint8_t> frame, uint16_t identifier,
-                           uint32_t src_ip, uint32_t dest_ip,
-                           uint16_t src_port, uint16_t dest_port,
-                           uint32_t sequence, uint32_t ack_number,
-                           bool nonce_sum, bool cwr, bool ece,
-                           bool urgent, bool ack, bool push, bool reset, bool sync, bool fin,
-                           uint16_t window, Slice<uint8_t> data) {
-        size_t tcp_size = sizeof(TCPHeader) + data.size();
+    class Guard {
+    private:
+        const IPV4Header *ip_header;
+        MutSlice<uint8_t> frame;
+        MutSlice<uint8_t> inner;
 
-        size_t ip_header_size = IPV4Header::generate(frame, identifier, IPV4Protocol::TCP,
-                                                     src_ip, dest_ip, tcp_size);
+    public:
+        Guard() noexcept: ip_header{nullptr}, frame{}, inner{} {}
 
-        if (ip_header_size == 0) { return 0; }
+        Guard(const IPV4Header *ip_header, MutSlice<uint8_t> icmp_frame, MutSlice<uint8_t> inner) :
+                ip_header{ip_header}, frame{icmp_frame} , inner{inner} {}
 
-        auto tcp_frame = frame[Range{ip_header_size}];
+        Guard(Guard &&other) noexcept = default;
+
+        Guard &operator=(Guard &&other) noexcept = default;
+
+        MutSlice<uint8_t> &operator*() { return inner; }
+
+        MutSlice<uint8_t> *operator->() { return &inner; }
+
+        ~Guard() {
+            auto *tcp_header = reinterpret_cast<TCPHeader *>(frame.begin());
+            tcp_header->set_checksum(complement_checksum(*ip_header, frame));
+        }
+    };
+
+    static Guard generate(MutSlice<uint8_t> frame, uint16_t identifier,
+                          uint32_t src_ip, uint32_t dest_ip,
+                          uint16_t src_port, uint16_t dest_port,
+                          uint32_t sequence, uint32_t ack_number,
+                          bool nonce_sum, bool cwr, bool ece, bool urgent, bool ack,
+                          bool push, bool reset, bool sync, bool fin,
+                          uint16_t window, size_t len) {
+        size_t tcp_size = sizeof(TCPHeader) + len;
+
+        auto tcp_frame = IPV4Header::generate(frame, identifier, IPV4Protocol::TCP,
+                                              src_ip, dest_ip, tcp_size);
+
+        if (tcp_frame.empty()) { return {}; }
 
         auto *tcp_header = reinterpret_cast<TCPHeader *>(tcp_frame.begin());
 
@@ -134,12 +158,10 @@ public:
                                  sizeof(TCPHeader), nonce_sum, cwr, ece, urgent, ack,
                                  push, reset, sync, fin, window};
 
-        tcp_frame[Range{sizeof(TCPHeader)}][Range{0, data.size()}].copy_from_slice(data);
-
-        auto *ip_header = reinterpret_cast<IPV4Header *>(frame.begin());
-        tcp_header->set_checksum(complement_checksum(*ip_header, tcp_frame));
-
-        return tcp_size;
+        return Guard{
+                reinterpret_cast<IPV4Header *>(frame.begin()),
+                tcp_frame, tcp_frame[Range{sizeof(TCPHeader)}]
+        };
     }
 
     static const TCPHeader *from_slice(Slice <uint8_t> data) {

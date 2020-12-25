@@ -9,15 +9,77 @@ namespace cs120 {
 constexpr uint16_t WINDOW = 65535;
 constexpr uint16_t IDENTIFIER = 0;
 
+
+ssize_t TCPSender::send(Slice<uint8_t> data) {
+    std::unique_lock<std::mutex> sender_guard{sender_lock};
+
+    if (index_increase(buffer_end, 1) == buffer_start) {
+        if (closed) { return 0; }
+
+        std::unique_lock<std::mutex> guard{lock};
+
+        while (index_increase(buffer_end, 1) == buffer_start) {
+            if (closed) { return 0; }
+
+            full.wait(guard);
+        }
+    }
+
+    uint32_t start = buffer_start;
+    start = start == 0 ? buffer.size() - 1 : start - 1;
+
+    size_t size = 0;
+
+    if (start > buffer_end) {
+        size_t len = std::min(data.size() - size, start - buffer_end);
+        buffer[Range{buffer_end}][Range{0, len}].copy_from_slice(data[Range{0, len}]);
+        size += len;
+    } else {
+        size_t len = std::min(data.size() - size, buffer.size() - buffer_end);
+        buffer[Range{buffer_end}][Range{0, len}].copy_from_slice(data[Range{0, len}]);
+        size += len;
+        if (size < buffer.size()) {
+            len = std::min(static_cast<uint32_t>(data.size() - size), start);
+            buffer[Range{0, len}].copy_from_slice(data[Range{size}][Range{0, len}]);
+            size += len;
+        }
+    }
+
+    buffer_end = index_increase(buffer_end, size);
+
+    return size;
+}
+
+void TCPSender::take(MutSlice<uint8_t> data) {
+    uint32_t end = buffer_end;
+
+    if (buffer_start < end) {
+        data.copy_from_slice(buffer[Range{buffer_start}][Range{0, data.size()}]);
+    } else {
+        size_t len = std::min(data.size(), buffer.size() - buffer_start);
+        data[Range{0, len}].copy_from_slice(buffer[Range{buffer_start}][Range{0, len}]);
+        data[Range{len}].copy_from_slice(buffer[Range{0, data.size() - len}]);
+    }
+
+    buffer_start = index_increase(buffer_start, data.size());
+    frame_send += data.size();
+
+    full.notify_one();
+}
+
 void TCPReceiver::accept(uint32_t seq, Slice<uint8_t> data) {
     uint32_t buffer_seq = seq - frame_receive;
     uint32_t buffer_offset = buffer_seq + buffer_end;
-    if (buffer_seq < get_window()) {
-        uint32_t size = std::min(data.size(), get_window() - buffer_seq);
+    uint32_t window = get_window();
 
-//        printf("receive: %d, %ld, window: %ld\n", buffer_seq, data.size(), get_window());
-//        printf("receive before: %ld, %ld\n", buffer_start, buffer_end);
-//        for (auto &item: fragments) { printf("\t%d, %d\n", item.seq - frame_receive, item.length); }
+    if (closing) {
+        uint32_t remain = close_seq - frame_receive;
+        window = std::min(window, remain);
+    }
+
+    if (buffer_seq < window) {
+        uint32_t size = std::min(static_cast<uint32_t>(data.size()), window - buffer_seq);
+        if (size == 0) { return; }
 
         if (buffer_offset + size <= buffer.size()) {
             buffer[Range{buffer_offset}][Range{0, size}].copy_from_slice(data[Range{0, size}]);
@@ -71,27 +133,36 @@ void TCPReceiver::accept(uint32_t seq, Slice<uint8_t> data) {
         } else {
             fragments.insert(b, new_fragment);
         }
-
-//        printf("receive after: %ld, %ld\n", buffer_start, buffer_end);
-//        for (auto &item: fragments) { printf("\t%d, %d\n", item.seq - frame_receive, item.length); }
     }
+}
+
+void TCPReceiver::close(uint32_t seq) {
+    close_seq = seq;
+    closing = true;
+    empty.notify_one();
 }
 
 ssize_t TCPReceiver::recv(MutSlice<uint8_t> data) {
     std::unique_lock<std::mutex> receiver_guard{receiver_lock};
 
     if (buffer_start == buffer_end) {
+        if (closed) { return 0; }
+
         std::unique_lock<std::mutex> guard{lock};
 
         while (buffer_start == buffer_end) {
+            if (closed) { return 0; }
+
             empty.wait(guard);
         }
     }
 
+    uint32_t end = buffer_end;
+
     size_t size = 0;
 
-    if (buffer_end > buffer_start) {
-        size_t len = std::min(data.size() - size, buffer_end - buffer_start);
+    if (end > buffer_start) {
+        size_t len = std::min(data.size() - size, end - buffer_start);
         data[Range{0, len}].copy_from_slice(buffer[Range{buffer_start}][Range{0, len}]);
         size += len;
     } else {
@@ -99,7 +170,7 @@ ssize_t TCPReceiver::recv(MutSlice<uint8_t> data) {
         data[Range{0, len}].copy_from_slice(buffer[Range{buffer_start}][Range{0, len}]);
         size += len;
         if (size < buffer.size()) {
-            len = std::min(data.size() - size, buffer_end);
+            len = std::min(static_cast<uint32_t>(data.size() - size), end);
             data[Range{size}][Range{0, len}].copy_from_slice(buffer[Range{0, len}]);
             size += len;
         }
@@ -114,7 +185,9 @@ void *TCPServer::tcp_sender(void *args_) {
     auto *args = reinterpret_cast<TCPSenderArgs *>(args_);
 
     for (;;) {
-        auto buffer = args->request_receiver.recv(); // todo: time out
+        // todo: time out
+        // todo: merge requests
+        auto buffer = args->request_receiver.recv();
 
         switch (buffer->type) {
             case Request::Create: {
@@ -130,7 +203,7 @@ void *TCPServer::tcp_sender(void *args_) {
                                     sender->frame_send++, sender->frame_receive,
                                     false, false, false, false, true,
                                     false, false, true, false,
-                                    WINDOW, Slice<uint8_t>{});
+                                    WINDOW, 0);
             }
                 break;
             case Request::FrameReceive: {
@@ -147,7 +220,7 @@ void *TCPServer::tcp_sender(void *args_) {
                                     sender->frame_send, sender->frame_receive,
                                     false, false, false, false, true,
                                     false, false, false, false,
-                                    WINDOW, Slice<uint8_t>{});
+                                    WINDOW, 0);
             }
                 break;
             case Request::AckReceive: {
@@ -155,6 +228,27 @@ void *TCPServer::tcp_sender(void *args_) {
                 auto *sender = args->connection.find(request.dest)->second;
 
                 sender->ack_receive = request.ack_receive;
+            }
+                break;
+            case Request::FrameSend: {
+                auto &request = buffer->inner.frame_receive;
+                auto *sender = args->connection.find(request.dest)->second;
+
+                size_t size = TCPHeader::max_payload(args->mtu);
+                size = std::min(size, sender->get_size());
+
+                if (size > 0) {
+                    auto send = args->send_queue.send();
+                    auto tcp_buffer = TCPHeader::generate((*send)[Range{}], IDENTIFIER,
+                                                          args->addr.ip_addr, sender->addr.ip_addr,
+                                                          args->addr.port, sender->addr.port,
+                                                          sender->frame_send, sender->frame_receive,
+                                                          false, false, false, false, true,
+                                                          false, false, false, false,
+                                                          WINDOW, size);
+
+                    sender->take(*tcp_buffer);
+                }
             }
                 break;
             case Request::Close: {
@@ -169,10 +263,10 @@ void *TCPServer::tcp_sender(void *args_) {
                 TCPHeader::generate((*send)[Range{}], IDENTIFIER,
                                     args->addr.ip_addr, sender->addr.ip_addr,
                                     args->addr.port, sender->addr.port,
-                                    sender->frame_send++, sender->frame_receive,
+                                    sender->frame_send++, sender->frame_receive + 1,
                                     false, false, false, false, true,
                                     false, false, false, true,
-                                    WINDOW, Slice<uint8_t>{});
+                                    WINDOW, 0);
             }
                 break;
             default:
@@ -213,7 +307,11 @@ void *TCPServer::tcp_receiver(void *args_) {
                 args->connection.emplace(dest, recv);
 
                 { *args->request_sender.send() = Request{Request::Create, {.create = {send}}}; }
-                { *args->connect_sender.send() = TCPConnection{dest, send, recv}; }
+                {
+                    *args->connect_sender.send() = TCPConnection{
+                            dest, send, recv, args->request_sender
+                    };
+                }
             } else {
                 // todo: reset tcp package other than syn when no connection is established
             }
@@ -224,8 +322,8 @@ void *TCPServer::tcp_receiver(void *args_) {
                 // todo
             }
 
-            if (receiver->closed) {
-                // todo: handle closed situation
+            if (tcp_header->get_sync()) {
+                // todo
             }
 
             bool receive_ack = false;
@@ -233,7 +331,7 @@ void *TCPServer::tcp_receiver(void *args_) {
             if (tcp_header->get_ack()) {
                 uint32_t ack_num = tcp_header->get_ack_number();
 //                if (ack_num > receiver->frame_send) {
-//                    // todo: invalid ack
+//                    // todo: handle invalid ack
 //                } else
                 if (ack_num > receiver->ack_receive) {
                     receiver->ack_receive = tcp_header->get_ack_number();
@@ -241,25 +339,22 @@ void *TCPServer::tcp_receiver(void *args_) {
                 }
             }
 
-            if (tcp_header->get_sync()) {
-                // todo
+            if (!tcp_data.empty()) {
+                receiver->accept(tcp_header->get_sequence(), tcp_data);
             }
 
             if (tcp_header->get_fin()) {
-                // todo: handle fin with data
-                // todo: handle out of order fin
+                // todo: handle repeated fin
+                receiver->close(tcp_header->get_sequence() + tcp_data.size());
+            }
 
-                receiver->frame_receive += 1;
-
+            if (!receiver->closed && receiver->finished()) {
                 receiver->closed = true;
-
                 *args->request_sender.send() = Request{
-                    Request::Close,
-                    {.close = {dest, receiver->ack_receive, receiver->frame_receive}}
+                        Request::Close,
+                        {.close = {dest, receiver->ack_receive, receiver->frame_receive}}
                 };
             } else if (!tcp_data.empty()) {
-                receiver->accept(tcp_header->get_sequence(), tcp_data);
-
                 *args->request_sender.send() = Request{
                         Request::FrameReceive,
                         {.frame_receive = {dest, receiver->ack_receive, receiver->frame_receive}}
@@ -275,9 +370,9 @@ void *TCPServer::tcp_receiver(void *args_) {
 }
 
 
-TCPServer::TCPServer(std::unique_ptr<BaseSocket> device, size_t size, EndPoint addr) :
-        sender{}, receiver{}, device{std::move(device)}, addr{addr} {
-    auto[send, recv] = this->device->bind([=](auto ip_header, auto ip_option, auto ip_data) {
+TCPServer::TCPServer(std::shared_ptr<BaseSocket> &device, size_t size, EndPoint addr) :
+        sender{}, receiver{}, device{device}, addr{addr} {
+    auto[send, recv] = device->bind([=](auto ip_header, auto ip_option, auto ip_data) {
         (void) ip_option;
         (void) ip_data;
 
@@ -302,6 +397,7 @@ TCPServer::TCPServer(std::unique_ptr<BaseSocket> device, size_t size, EndPoint a
     connect_receiver = std::move(connect_recv);
 
     auto *sender_args = new TCPSenderArgs{
+            .mtu = device->get_mtu(),
             .addr = addr,
             .send_queue = send,
             .request_receiver = std::move(request_recv),

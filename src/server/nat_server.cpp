@@ -4,10 +4,10 @@
 
 
 namespace cs120 {
-NatServer::NatServer(uint32_t lan_addr, uint32_t wan_addr, std::shared_ptr<BaseSocket> lan,
-                     std::shared_ptr<BaseSocket> wan, size_t size,
+NatServer::NatServer(uint32_t lan_addr, uint32_t wan_addr, std::shared_ptr<BaseSocket> &lan,
+                     std::shared_ptr<BaseSocket> &wan, size_t size,
                      const Array<EndPoint> &map_addr) :
-        lan_to_wan{}, wan_to_lan{}, lan{std::move(lan)}, wan{std::move(wan)},
+        lan_to_wan{}, wan_to_lan{}, lan{lan}, wan{wan},
         lan_sender{}, wan_sender{}, lan_receiver{}, wan_receiver{},
         nat_table{NAT_PORTS_SIZE}, nat_reverse_table{},
         lowest_free_port{NAT_PORTS_BASE}, wan_addr{wan_addr} {
@@ -28,7 +28,7 @@ NatServer::NatServer(uint32_t lan_addr, uint32_t wan_addr, std::shared_ptr<BaseS
     uint32_t sub_net_mask = inet_addr("255.255.255.0");
     uint32_t sub_net_addr = inet_addr("192.168.1.0");
 
-    auto[lan_send, lan_recv] = this->lan->bind([=](auto ip_header, auto ip_option, auto ip_data) {
+    auto[lan_send, lan_recv] = lan->bind([=](auto ip_header, auto ip_option, auto ip_data) {
         (void) ip_option;
         (void) ip_data;
 
@@ -39,7 +39,7 @@ NatServer::NatServer(uint32_t lan_addr, uint32_t wan_addr, std::shared_ptr<BaseS
         return true;
     }, size);
 
-    auto[wan_send, wan_recv] = this->wan->bind([=](auto ip_header, auto ip_option, auto ip_data) {
+    auto[wan_send, wan_recv] = wan->bind([=](auto ip_header, auto ip_option, auto ip_data) {
         (void) ip_option;
         (void) ip_data;
 
@@ -109,7 +109,7 @@ void NatServer::nat_lan_to_wan() {
             }
             case IPV4Protocol::TCP: {
                 auto *tcp_header = ip_data.buffer_cast<TCPHeader>();
-                if (tcp_header == nullptr || complement_checksum(ip_data) != 0) {
+                if (tcp_header == nullptr || complement_checksum(*ip_header, ip_data) != 0) {
                     cs120_warn("invalid package!");
                     continue;
                 }
@@ -186,7 +186,7 @@ void NatServer::nat_lan_to_wan() {
                 auto *tcp_header = reinterpret_cast<TCPHeader *>(ip_data.begin());
                 tcp_header->set_src_port(wan_port);
                 tcp_header->set_checksum(0);
-                tcp_header->set_checksum(complement_checksum(ip_data));
+                tcp_header->set_checksum(complement_checksum(*ip_header, ip_data));
                 break;
             }
             default:
@@ -252,7 +252,7 @@ void NatServer::nat_wan_to_lan() {
             }
             case IPV4Protocol::TCP: {
                 auto *tcp_header = ip_data.buffer_cast<TCPHeader>();
-                if (tcp_header == nullptr || complement_checksum(ip_data) != 0) {
+                if (tcp_header == nullptr || complement_checksum(*ip_header, ip_data) != 0) {
                     cs120_warn("invalid package!");
                     continue;
                 }
@@ -312,7 +312,7 @@ void NatServer::nat_wan_to_lan() {
                 auto *tcp_header = reinterpret_cast<TCPHeader *>(ip_data.begin());
                 tcp_header->set_dest_port(end_point.port);
                 tcp_header->set_checksum(0);
-                tcp_header->set_checksum(complement_checksum(ip_data));
+                tcp_header->set_checksum(complement_checksum(*ip_header, ip_data));
                 break;
             }
             default:

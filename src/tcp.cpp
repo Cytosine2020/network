@@ -39,8 +39,8 @@ int main(int argc, char **argv) {
         Slice<uint8_t> data{reinterpret_cast<uint8_t *>(buffer), static_cast<size_t>(tmp.st_size)};
 
         if (strcmp(device, "-a") == 0) {
-            std::unique_ptr<BaseSocket> sock{new RawSocket{64}};
-            auto server = TCPServer{std::move(sock), 64, src};
+            std::shared_ptr<BaseSocket> sock{new RawSocket{64}};
+            auto server = TCPServer{sock, 64, src};
             auto connect = server.accept();
 
             size_t i = 0, j = 0;
@@ -95,8 +95,6 @@ int main(int argc, char **argv) {
                 }
             }
 
-            sleep(1);
-
             close(sock);
         } else {
             cs120_abort("unknown device!");
@@ -112,8 +110,8 @@ int main(int argc, char **argv) {
         Array<uint8_t> buffer{2048};
 
         if (strcmp(device, "-a") == 0) {
-            std::unique_ptr<BaseSocket> sock{new RawSocket{64}};
-            auto server = TCPServer{std::move(sock), 64, src};
+            std::shared_ptr<BaseSocket> sock{new RawSocket{64}};
+            auto server = TCPServer{sock, 64, src};
             auto connect = server.accept();
 
             for (;;) {

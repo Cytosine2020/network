@@ -17,7 +17,7 @@ int main(int argc, char **argv) {
     auto src = parse_ip_address(argv[2]);
     auto dest = parse_ip_address(argv[3]);
 
-    std::shared_ptr<BaseSocket> sock = nullptr;
+    std::shared_ptr<BaseSocket> sock{};
     if (strcmp(device, "-a") == 0) {
         sock = std::shared_ptr<BaseSocket>{new UnixSocket{64}};
     } else if (strcmp(device, "-e") == 0) {
@@ -29,7 +29,7 @@ int main(int argc, char **argv) {
     printf("local %s:%d\n", inet_ntoa(in_addr{src.ip_addr}), src.port);
     printf("remote %s:%d\n", inet_ntoa(in_addr{dest.ip_addr}), dest.port);
 
-    ICMPServer server{std::move(sock), src.ip_addr};
+    ICMPServer server{sock, src.ip_addr};
     auto client = server.create_ping(56789, dest.ip_addr, src.port, dest.port);
 
     sleep(1); // FIXME: the filter is not updated quick enough

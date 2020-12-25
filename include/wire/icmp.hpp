@@ -36,31 +36,42 @@ public:
         set_sequence(sequence);
     }
 
-    static size_t generate(MutSlice<uint8_t> frame, uint16_t identifier,
-                           uint32_t src_ip, uint32_t dest_ip, ICMPType type,
-                           uint16_t identification, uint16_t sequence, Slice<uint8_t> data) {
-        size_t icmp_size = sizeof(ICMPHeader) + data.size();
+    class Guard {
+    private:
+        MutSlice<uint8_t> frame;
+        MutSlice<uint8_t> inner;
 
-        size_t ip_header_size = IPV4Header::generate(frame, identifier, IPV4Protocol::ICMP,
-                                                     src_ip, dest_ip, icmp_size);
+    public:
+        Guard() noexcept: frame{}, inner{} {}
 
-        if (ip_header_size == 0) { return 0; }
+        Guard(MutSlice<uint8_t> icmp_frame, MutSlice<uint8_t> inner) :
+                frame{icmp_frame} , inner{inner} {}
 
-        size_t ip_datagram_size = icmp_size + ip_header_size;
+        Guard(Guard &&other) noexcept = default;
 
-        if (frame.size() < ip_datagram_size) { return 0; }
+        Guard &operator=(Guard &&other) noexcept = default;
 
-        auto icmp_frame = frame[Range{ip_header_size}][Range{0, icmp_size}];
+        MutSlice<uint8_t> &operator*() { return inner; }
+
+        MutSlice<uint8_t> *operator->() { return &inner; }
+
+        ~Guard() {
+            auto *icmp_header = reinterpret_cast<ICMPHeader *>(frame.begin());
+            icmp_header->set_checksum(complement_checksum(frame));
+        }
+    };
+
+    static Guard generate(MutSlice<uint8_t> frame, uint16_t identifier,
+                          uint32_t src_ip, uint32_t dest_ip, ICMPType type,
+                          uint16_t identification, uint16_t sequence, size_t len) {
+        auto icmp_frame = IPV4Header::generate(frame, identifier, IPV4Protocol::ICMP,
+                                               src_ip, dest_ip, sizeof(ICMPHeader) + len);
+        if (icmp_frame.empty()) { return {}; }
 
         auto *icmp_header = reinterpret_cast<ICMPHeader *>(icmp_frame.begin());
-
         new(icmp_header)ICMPHeader{type, identification, sequence};
 
-        icmp_frame[Range{sizeof(ICMPHeader)}].copy_from_slice(data);
-
-        icmp_header->set_checksum(complement_checksum(icmp_frame));
-
-        return ip_datagram_size;
+        return Guard{icmp_frame, icmp_frame[Range{sizeof(ICMPHeader)}]};
     }
 
     static const ICMPHeader *from_slice(Slice<uint8_t> data) {

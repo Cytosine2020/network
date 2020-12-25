@@ -30,7 +30,10 @@ public:
         return std::make_pair(send_queue, recv_queue.send(std::move(condition), size));
     }
 
-    ~RawSocket() override = default;
+    ~RawSocket() override {
+        pthread_join(receiver, nullptr);
+        pthread_join(sender, nullptr);
+    }
 };
 }
 

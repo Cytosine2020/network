@@ -18,10 +18,9 @@ bool ICMPPing::ping(uint16_t seq) {
 
     {
         auto buffer = send_queue.send();
-        if (ICMPHeader::generate((*buffer)[Range{}], seq + 1, src_ip, dest_ip,
-                                 ICMPType::EchoRequest, identification, seq, data) == 0) {
-            cs120_abort("header generation failed!");
-        }
+        ICMPHeader::generate((*buffer)[Range{}], seq + 1, src_ip, dest_ip,
+                             ICMPType::EchoRequest, identification, seq, data.size())
+                ->copy_from_slice(data);
     }
 
     auto deadline = std::chrono::system_clock::now() + 1s;
@@ -79,9 +78,9 @@ void ICMPServer::icmp_receiver() {
 }
 
 
-ICMPServer::ICMPServer(std::shared_ptr<BaseSocket> device, uint32_t ip_addr) :
-        device{std::move(device)}, receiver{}, send_queue{}, recv_queue{}, ip_addr{ip_addr} {
-    auto[send, recv] = this->device->bind([=](auto *ip_header, auto ip_option, auto ip_data) {
+ICMPServer::ICMPServer(std::shared_ptr<BaseSocket> &device, uint32_t ip_addr) :
+        device{device}, receiver{}, send_queue{}, recv_queue{}, ip_addr{ip_addr} {
+    auto[send, recv] = device->bind([=](auto *ip_header, auto ip_option, auto ip_data) {
         (void) ip_option;
 
         if (ip_header->get_protocol() != IPV4Protocol::ICMP ||
@@ -105,10 +104,9 @@ ICMPServer::ICMPServer(std::shared_ptr<BaseSocket> device, uint32_t ip_addr) :
     pthread_create(&receiver, nullptr, icmp_receiver, this);
 }
 
-ICMPPing
-ICMPServer::create_ping(uint16_t identification, uint32_t dest_ip,
-                        uint16_t src_port, uint16_t dest_port) {
-    auto[send, recv] = this->device->bind([=](auto *ip_header, auto ip_option, auto ip_data) {
+ICMPPing ICMPServer::create_ping(uint16_t identification, uint32_t dest_ip,
+                                 uint16_t src_port, uint16_t dest_port) {
+    auto[send, recv] = device->bind([=](auto *ip_header, auto ip_option, auto ip_data) {
         (void) ip_option;
 
         if (ip_header->get_protocol() != IPV4Protocol::ICMP ||

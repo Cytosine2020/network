@@ -18,7 +18,7 @@ private:
     uint16_t identifier;
 
 public:
-    UDPServer(std::shared_ptr<BaseSocket> device,  size_t size,
+    UDPServer(std::shared_ptr<BaseSocket> &device,  size_t size,
               uint32_t src_ip, uint32_t dest_ip, uint16_t src_port, uint16_t dest_port);
 
     UDPServer(UDPServer &&other) noexcept = default;
