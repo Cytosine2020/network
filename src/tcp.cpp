@@ -40,15 +40,14 @@ int main(int argc, char **argv) {
 
         if (strcmp(device, "-a") == 0) {
             std::shared_ptr<BaseSocket> sock{new RawSocket{64}};
-            auto server = TCPServer{sock, 64, src};
-            auto connect = server.accept();
+            TCPClient connect{sock, 64, src, dest};
 
             size_t i = 0, j = 0;
             for (; i < data.size(); ++i) {
                 if (data[i] == '\n') {
                     connect.send(data[Range{j, i + 1}]);
                     j = i + 1;
-                    sleep(1);
+//                    sleep(1);
                 }
             }
 
@@ -65,20 +64,22 @@ int main(int argc, char **argv) {
             if (bind(sock, reinterpret_cast<sockaddr *>(&src_addr),
                      sizeof(struct sockaddr_in))) { cs120_abort("bind error"); }
 
-            struct sockaddr_in dest_addr{};
-            dest_addr.sin_family = AF_INET;
-            dest_addr.sin_port = htons(dest.port);
-            dest_addr.sin_addr = in_addr{dest.ip_addr};
+            if (listen(sock, 0) != 0) { cs120_abort("listen error"); }
 
-            if (connect(sock, reinterpret_cast<sockaddr *>(&dest_addr),
-                        sizeof(struct sockaddr_in)) < 0) { cs120_abort("connect error"); }
+            struct sockaddr_in dest_addr{};
+            socklen_t len = sizeof(struct sockaddr_in);
+
+            int fd = accept(sock, reinterpret_cast<sockaddr *>(&dest_addr), &len);
+            if (fd < 0 || len != sizeof(struct sockaddr_in)) { cs120_abort("accept error"); }
+
+            close(sock);
 
             size_t i = 0, j = 0;
             for (; i < data.size(); ++i) {
                 if (data[i] == '\n') {
                     auto slice = data[Range{j, i + 1}];
 
-                    if (send(sock, slice.begin(), slice.size(), 0) == -1) {
+                    if (send(fd, slice.begin(), slice.size(), 0) == -1) {
                         cs120_abort("send error");
                     }
 
@@ -90,12 +91,12 @@ int main(int argc, char **argv) {
             if (j < i) {
                 auto slice = data[Range{j, i + 1}];
 
-                if (send(sock, slice.begin(), slice.size(), 0) == -1) {
+                if (send(fd, slice.begin(), slice.size(), 0) == -1) {
                     cs120_abort("send error");
                 }
             }
 
-            close(sock);
+            close(fd);
         } else {
             cs120_abort("unknown device!");
         }
@@ -111,8 +112,7 @@ int main(int argc, char **argv) {
 
         if (strcmp(device, "-a") == 0) {
             std::shared_ptr<BaseSocket> sock{new RawSocket{64}};
-            auto server = TCPServer{sock, 64, src};
-            auto connect = server.accept();
+            TCPClient connect{sock, 64, src, dest};
 
             for (;;) {
                 size_t size = connect.recv(buffer[Range{}]);
@@ -137,16 +137,18 @@ int main(int argc, char **argv) {
             if (bind(sock, reinterpret_cast<sockaddr *>(&src_addr),
                      sizeof(struct sockaddr_in))) { cs120_abort("bind error"); }
 
-            struct sockaddr_in dest_addr{};
-            dest_addr.sin_family = AF_INET;
-            dest_addr.sin_port = htons(dest.port);
-            dest_addr.sin_addr = in_addr{dest.ip_addr};
+            if (listen(sock, 0) != 0) { cs120_abort("listen error"); }
 
-            if (connect(sock, reinterpret_cast<sockaddr *>(&dest_addr),
-                        sizeof(struct sockaddr_in)) < 0) { cs120_abort("connect error"); }
+            struct sockaddr_in dest_addr{};
+            socklen_t len = sizeof(struct sockaddr_in);
+
+            int fd = accept(sock, reinterpret_cast<sockaddr *>(&dest_addr), &len);
+            if (fd < 0 || len != sizeof(struct sockaddr_in)) { cs120_abort("accept error"); }
+
+            close(sock);
 
             for (;;) {
-                ssize_t count = recv(sock, buffer.begin(), buffer.size(), 0);
+                ssize_t count = recv(fd, buffer.begin(), buffer.size(), 0);
                 if (count == -1) { cs120_abort("recv error"); }
                 if (count == 0) { break; }
 
@@ -156,7 +158,7 @@ int main(int argc, char **argv) {
                 printf("%.*s\n", static_cast<uint32_t>(count), buffer.begin());
             }
 
-            close(sock);
+            close(fd);
         } else {
             cs120_abort("unknown device!");
         }

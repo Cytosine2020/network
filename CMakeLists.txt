@@ -18,12 +18,12 @@ include_directories(${PCAP_INCLUDE_DIR} ${LIBNET_INCLUDE_DIR} include)
 add_executable(icmp
         src/icmp.cpp src/wire/wire.cpp src/device/athernet.cpp
         src/device/unix_socket.cpp src/device/athernet_socket.cpp src/server/icmp_server.cpp)
-target_link_libraries(icmp pthread ${PCAP_LIBRARY})
+target_link_libraries(icmp pthread)
 
 add_executable(udp
         src/udp.cpp src/wire/wire.cpp src/device/athernet.cpp
         src/device/unix_socket.cpp src/device/athernet_socket.cpp src/server/udp_server.cpp)
-target_link_libraries(udp pthread ${PCAP_LIBRARY})
+target_link_libraries(udp pthread)
 
 add_executable(tcp
         src/tcp.cpp src/wire/wire.cpp src/device/athernet.cpp
@@ -31,7 +31,7 @@ add_executable(tcp
 target_link_libraries(tcp pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
 add_executable(nat
-        src/nat.cpp src/wire/wire.cpp src/device/athernet.cpp
+        src/nat.cpp src/wire/wire.cpp  src/wire/get_local_ip.cpp src/device/athernet.cpp
         src/device/raw_socket.cpp src/device/unix_socket.cpp src/server/nat_server.cpp)
 target_link_libraries(nat pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 

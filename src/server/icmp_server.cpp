@@ -27,7 +27,7 @@ bool ICMPPing::ping(uint16_t seq) {
 
     for (;;) {
         auto buffer = recv_queue->recv_deadline(deadline);
-        if (buffer.empty()) { return false; }
+        if (buffer.none()) { return false; }
 
         auto[ip_header, ip_option, ip_data] = ipv4_split((*buffer)[Range{}]);
         if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
@@ -66,7 +66,7 @@ void ICMPServer::icmp_receiver() {
         }
 
         auto send = send_queue.try_send();
-        if (send.empty()) {
+        if (send.none()) {
             cs120_warn("echo reply loss!");
         } else {
             icmp_header->set_type(ICMPType::EchoReply);

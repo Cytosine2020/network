@@ -1,4 +1,5 @@
 #include "wire/wire.hpp"
+#include "wire/get_local_ip.hpp"
 #include "device/raw_socket.hpp"
 #include "device/unix_socket.hpp"
 #include "server/nat_server.hpp"

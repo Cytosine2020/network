@@ -22,6 +22,38 @@ enum class TCPOption : uint8_t {
 };
 
 
+struct TCPOptionMSS {
+    TCPOption op = TCPOption::MaximumSegmentSize;
+    uint8_t size = sizeof(TCPOptionMSS) - offsetof(TCPOptionMSS, op);
+    uint16_t mss;
+
+    explicit TCPOptionMSS(uint16_t mss) : mss{htons(mss)} {}
+
+    uint16_t get_mss() const { return ntohl(mss); }
+}__attribute__((packed));
+
+struct TCPOptionTime {
+    TCPOption _pad[2] = {TCPOption::NoOperation, TCPOption::NoOperation};
+    TCPOption op = TCPOption::Timestamp;
+    uint8_t size = sizeof(TCPOptionTime) - offsetof(TCPOptionTime, op);
+    uint32_t time_value;
+    uint32_t time_reply;
+
+    TCPOptionTime(uint32_t time_value, uint32_t time_reply) :
+            time_value{time_value}, time_reply{time_reply} {}
+}__attribute__((packed));
+
+
+struct TCPOptionScale {
+    TCPOption _pad[1] = {TCPOption::NoOperation};
+    TCPOption op = TCPOption::WindowScaleFactor;
+    uint8_t scale_size = sizeof(TCPOptionScale) - offsetof(TCPOptionScale, op);
+    uint8_t scale;
+
+    explicit TCPOptionScale(uint8_t scale) : scale{scale} {}
+}__attribute__((packed));
+
+
 class TCPOptionIter {
 private:
     Slice<uint8_t> buffer;
@@ -51,18 +83,9 @@ public:
         }
     }
 
-    bool end(const Item &item) const { return item.first == TCPOption::End; }
+    bool is_end(const Item &item) const { return item.first == TCPOption::End; }
 };
 
-
-enum class TCPFlags {
-    Sync,
-    SyncAck,
-    Ack,
-    Fin,
-    Reset,
-    Error,
-};
 
 struct TCPHeader {
 private:
@@ -144,8 +167,8 @@ public:
                           uint32_t sequence, uint32_t ack_number,
                           bool nonce_sum, bool cwr, bool ece, bool urgent, bool ack,
                           bool push, bool reset, bool sync, bool fin,
-                          uint16_t window, size_t len) {
-        size_t tcp_size = sizeof(TCPHeader) + len;
+                          uint16_t window, Slice<uint8_t> option, size_t len) {
+        size_t tcp_size = sizeof(TCPHeader) + option.size() + len;
 
         auto tcp_frame = IPV4Header::generate(frame, identifier, IPV4Protocol::TCP,
                                               src_ip, dest_ip, tcp_size);
@@ -155,16 +178,18 @@ public:
         auto *tcp_header = reinterpret_cast<TCPHeader *>(tcp_frame.begin());
 
         new(tcp_header)TCPHeader{src_port, dest_port, sequence, ack_number,
-                                 sizeof(TCPHeader), nonce_sum, cwr, ece, urgent, ack,
-                                 push, reset, sync, fin, window};
+                                 sizeof(TCPHeader) + option.size(), nonce_sum, cwr, ece,
+                                 urgent, ack, push, reset, sync, fin, window};
+
+        tcp_frame[Range{sizeof(TCPHeader)}][Range{0, option.size()}].copy_from_slice(option);
 
         return Guard{
                 reinterpret_cast<IPV4Header *>(frame.begin()),
-                tcp_frame, tcp_frame[Range{sizeof(TCPHeader)}]
+                tcp_frame, tcp_frame[Range{sizeof(TCPHeader) + option.size()}]
         };
     }
 
-    static const TCPHeader *from_slice(Slice <uint8_t> data) {
+    static const TCPHeader *from_slice(Slice<uint8_t> data) {
         auto *result = reinterpret_cast<const TCPHeader *>(data.begin());
         if (data.size() < result->get_header_length() ||
             result->get_header_length() < sizeof(IPV4Header)) { return nullptr; }
@@ -221,40 +246,11 @@ public:
 
     bool get_fin() const { return (flags & FLAGS_FIN) > 0; }
 
-    TCPFlags get_flags() const {
-        if (get_fin()) {
-            if (!get_sync() && !get_reset()) {
-                return TCPFlags::Fin;
-            } else {
-                return TCPFlags::Error;
-            }
-        }
-
-        if (get_reset()) {
-            if (!get_sync() && !get_fin()) {
-                return TCPFlags::Reset;
-            } else {
-                return TCPFlags::Error;
-            }
-        }
-
-        if (get_sync()) {
-            if (!get_push() && !get_urgent()) {
-                if (get_ack()) {
-                    return TCPFlags::SyncAck;
-                } else {
-                    return TCPFlags::Sync;
-                }
-            } else {
-                return TCPFlags::Error;
-            }
-        }
-
-        if (get_ack()) {
-            return TCPFlags::Ack;
-        } else {
-            return TCPFlags::Error;
-        }
+    bool check_flags() const {
+        if ((get_fin() && get_sync()) ||
+            (get_fin() && get_reset()) ||
+            (get_reset() && get_sync())) { return false; }
+        return true;
     }
 
     void set_flags(bool cwr, bool ece, bool urgent, bool ack,

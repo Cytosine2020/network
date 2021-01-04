@@ -300,11 +300,11 @@ public:
 
     T *begin() { return inner; }
 
-    T *end() { return &inner[len]; }
+    T *end() { return inner + len; }
 
     const T *begin() const { return inner; }
 
-    const T *end() const { return &inner[len]; }
+    const T *end() const { return inner + len; }
 
     ~Buffer() = default;
 };

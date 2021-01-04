@@ -194,7 +194,7 @@ void NatServer::nat_lan_to_wan() {
         }
 
         auto send = wan_sender.try_send();
-        if (send->empty()) {
+        if (send.none()) {
             cs120_warn("package loss!");
         } else {
             (*send)[Range{0, ip_data_size}].copy_from_slice((*receive)[Range{0, ip_data_size}]);
@@ -320,7 +320,7 @@ void NatServer::nat_wan_to_lan() {
         }
 
         auto send = lan_sender.try_send();
-        if (send->empty()) {
+        if (send.none()) {
             cs120_warn("package loss!");
         } else {
             (*send)[Range{0, ip_data_size}].copy_from_slice((*receive)[Range{0, ip_data_size}]);

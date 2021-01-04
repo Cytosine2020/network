@@ -105,7 +105,7 @@ public:
     void send(Slice<uint8_t> datagram) {
         for (;;) {
             auto request = receiver.try_recv();
-            if (request.empty()) { break; }
+            if (request.none()) { break; }
 
             switch (request->type) {
                 case Request::Add:
@@ -129,7 +129,7 @@ public:
             if (!recv->condition(ip_header, ip_option, ip_data)) { continue; }
 
             auto slot = recv->queue.try_send();
-            if (slot->empty()) {
+            if (slot.none()) {
                 cs120_warn("package loss!");
             } else {
                 auto ip_datagram = datagram[Range{0, ip_header->get_total_length()}];

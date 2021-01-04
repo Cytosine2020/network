@@ -29,13 +29,13 @@ public:
 
         SenderSlotGuard &operator=(SenderSlotGuard &&other) noexcept = default;
 
-        bool empty() const { return inner == nullptr; }
+        bool none() const { return inner == nullptr; }
 
         T &operator*() { return *inner; }
 
         T *operator->() { return inner; }
 
-        ~SenderSlotGuard() { if (!empty()) { queue.commit(); }}
+        ~SenderSlotGuard() { if (!none()) { queue.commit(); }}
     };
 
 
@@ -51,13 +51,13 @@ public:
 
         ReceiverSlotGuard &operator=(ReceiverSlotGuard &&other) noexcept = default;
 
-        bool empty() const { return inner == nullptr; }
+        bool none() const { return inner == nullptr; }
 
         T &operator*() { return *inner; }
 
         T *operator->() { return inner; }
 
-        ~ReceiverSlotGuard() { if (!empty()) { queue.claim(); }}
+        ~ReceiverSlotGuard() { if (!none()) { queue.claim(); }}
     };
 
 
@@ -102,6 +102,11 @@ public:
         ReceiverSlotGuard try_recv() { return queue->try_recv(); }
 
         ReceiverSlotGuard recv() { return queue->recv(); }
+
+        template<class RepT, class PeriodT>
+        ReceiverSlotGuard recv_timeout(const std::chrono::duration<RepT, PeriodT> &period) {
+            return queue->recv_timeout(period);
+        }
 
         template<typename ClockT, typename DurationT>
         ReceiverSlotGuard recv_deadline(const std::chrono::time_point<ClockT, DurationT> &time) {
@@ -191,6 +196,24 @@ public:
         return ReceiverSlotGuard{&inner[start.load()], *this};
     }
 
+    template<class RepT, class PeriodT>
+    ReceiverSlotGuard recv_timeout(const std::chrono::duration<RepT, PeriodT> &period) {
+        receiver_lock.lock();
+
+        if (start.load() == end.load()) {
+            std::unique_lock<std::mutex> guard{lock};
+
+            while (start.load() == end.load()) {
+                if (empty.template wait_for(guard, period) == std::cv_status::timeout) {
+                    receiver_lock.unlock();
+                    return ReceiverSlotGuard{nullptr, *this};
+                }
+            }
+        }
+
+        return ReceiverSlotGuard{&inner[start.load()], *this};
+    }
+
     template<typename ClockT, typename DurationT>
     ReceiverSlotGuard recv_deadline(const std::chrono::time_point<ClockT, DurationT> &time) {
         receiver_lock.lock();
@@ -200,16 +223,13 @@ public:
 
             while (start.load() == end.load()) {
                 if (empty.template wait_until(guard, time) == std::cv_status::timeout) {
-                    goto timeout;
+                    receiver_lock.unlock();
+                    return ReceiverSlotGuard{nullptr, *this};
                 }
             }
         }
 
         return ReceiverSlotGuard{&inner[start.load()], *this};
-
-        timeout:
-        receiver_lock.unlock();
-        return ReceiverSlotGuard{nullptr, *this};
     }
 
     void claim() {

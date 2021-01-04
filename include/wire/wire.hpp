@@ -30,19 +30,16 @@ cs120_static_inline uint16_t complement_checksum_complement(uint32_t sum) {
 /// Calculates the Internet-checksum
 /// Valid for the IP, ICMP, TCP or UDP header
 ///
-/// *addr : Pointer to the Beginning of the data (checksum field must be 0)
-/// len : length of the data (in bytes)
+/// buffer : data
 /// return : checksum in network byte order
 uint16_t complement_checksum(Slice<uint8_t> buffer);
-
-uint32_t get_local_ip();
 
 
 struct EndPoint {
     uint32_t ip_addr;
     uint16_t port;
 
-    EndPoint() noexcept : ip_addr{0}, port{0} {}
+    EndPoint() noexcept: ip_addr{0}, port{0} {}
 
     EndPoint(uint32_t ip_addr, uint16_t port) : ip_addr{ip_addr}, port{port} {}
 
@@ -83,7 +80,7 @@ struct ETHHeader {
 template<>
 struct std::hash<cs120::EndPoint> {
     size_t operator()(const cs120::EndPoint &object) const {
-        return std::hash<uint64_t>{}(static_cast<uint64_t>(object.ip_addr) +
+        return std::hash<uint64_t>{}(static_cast<uint64_t>(object.ip_addr) |
                                      (static_cast<uint64_t>(object.port) << 32));
     }
 };
