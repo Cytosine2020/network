@@ -7,6 +7,7 @@
 
 #include "device/base_socket.hpp"
 #include "wire/tcp.hpp"
+#include "ipv4_server.hpp"
 
 
 namespace cs120 {
@@ -45,7 +46,9 @@ public:
 
     TCPSender &operator=(TCPSender &&other) noexcept = delete;
 
-    bool finished() const { return closed && frame_send == ack_receive; }
+    bool finished() const {
+        return closed && frame_send == ack_receive && frame_send == close_seq + 1;
+    }
 
     ssize_t send(Slice<uint8_t> data);
 
@@ -60,8 +63,8 @@ public:
             return;
         }
 
-        TCPHeader::generate((*send)[Range{}], IDENTIFIER,
-                            local.ip_addr, remote.ip_addr, local.port, remote.port,
+        TCPHeader::generate((*send)[Range{}], 0, IDENTIFIER,
+                            local.ip_addr, remote.ip_addr, 64, local.port, remote.port,
                             frame_send, frame_receive,
                             false, false, false, false, true, false, false, false, false,
                             WINDOW, Slice<uint8_t>{}, 0);
@@ -81,8 +84,8 @@ public:
                 return;
             }
 
-            auto tcp_buffer = TCPHeader::generate((*send)[Range{}], IDENTIFIER,
-                                                  local.ip_addr, remote.ip_addr,
+            auto tcp_buffer = TCPHeader::generate((*send)[Range{}], 0, IDENTIFIER,
+                                                  local.ip_addr, remote.ip_addr, 64,
                                                   local.port, remote.port,
                                                   ack_receive + offset, frame_receive,
                                                   false, false, false, false, true,
@@ -98,18 +101,20 @@ public:
     }
 
     void generate_fin(MPSCQueue<PacketBuffer>::Sender &sender) {
-        if (closed && frame_send == close_seq) {
+        if (closed) {
             auto send = sender.try_send();
             if (send.none()) {
                 cs120_warn("package lost!");
                 return;
             }
 
-            TCPHeader::generate((*send)[Range{}], IDENTIFIER,
-                                local.ip_addr, remote.ip_addr, local.port, remote.port,
-                                frame_send++, frame_receive,
+            TCPHeader::generate((*send)[Range{}], 0, IDENTIFIER,
+                                local.ip_addr, remote.ip_addr, 64, local.port, remote.port,
+                                close_seq, frame_receive,
                                 false, false, false, false, true, false, false, false, true,
                                 WINDOW, Slice<uint8_t>{}, 0);
+
+            frame_send = close_seq + 1;
         }
     }
 
@@ -192,18 +197,10 @@ public:
         } inner;
     };
 
-    struct SyncOption {
+    struct SyncOption : public IntoSliceTrait<SyncOption> {
         TCPOptionMSS mss;
 
         explicit SyncOption(uint16_t mss) : mss{mss} {}
-
-        Slice<uint8_t> into_slice() const {
-            return Slice<uint8_t>{reinterpret_cast<const uint8_t *>(this), sizeof(SyncOption)};
-        }
-
-        MutSlice<uint8_t> into_slice() {
-            return MutSlice<uint8_t>{reinterpret_cast<uint8_t *>(this), sizeof(SyncOption)};
-        }
     };
 
 private:
@@ -215,7 +212,7 @@ private:
     };
 
     struct TCPRecvArgs {
-        Demultiplexer::ReceiverGuard recv_queue;
+        Demultiplexer<PacketBuffer>::ReceiverGuard recv_queue;
         MPSCQueue<TCPClient::Request>::Sender request_sender;
         TCPReceiver *connection;
     };
@@ -236,10 +233,6 @@ private:
 
 public:
     TCPClient(std::shared_ptr<BaseSocket> &device, size_t size, EndPoint local, EndPoint remote);
-
-    static std::pair<uint32_t, uint32_t> connect(EndPoint local, EndPoint remote, uint16_t mss,
-                                                 MPSCQueue<PacketBuffer>::Sender &send_queue,
-                                                 Demultiplexer::ReceiverGuard &recv_queue);
 
     TCPClient(TCPClient &&other) noexcept = default;
 

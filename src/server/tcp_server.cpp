@@ -222,13 +222,15 @@ void *TCPClient::tcp_sender(void *args_) {
 
         // this is timeout
         if (recv.none()) {
-            timeout.pop();
+            if (!sender->finished()) {
+                timeout.pop();
 
-            uint32_t window = sender->get_size(); // todo
+                uint32_t window = sender->get_size(); // todo: window size
 
-            sender->generate_data(args->send_queue, mss, window);
+                sender->generate_data(args->send_queue, mss, window);
 
-            timeout.push(current + 300ms); // todo
+                timeout.push(current + 300ms); // todo
+            }
 
             continue;
         }
@@ -250,7 +252,9 @@ void *TCPClient::tcp_sender(void *args_) {
                 break;
             case Request::FrameSend: {
                 if (timeout.empty()) {
-                    uint32_t window = sender->get_size(); // todo
+                    uint32_t window = sender->get_size();
+                    // todo: window size
+                    // todo: nagle
 
                     sender->generate_data(args->send_queue, mss, window);
 
@@ -362,16 +366,17 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
         return true;
     }, size);
 
-    uint16_t mss = TCPHeader::max_payload(255); // todo
+    uint16_t local_mss = TCPHeader::max_payload(device->get_mtu());
+    uint16_t remote_mss = 0;
 
     uint32_t local_seq = 0, remote_seq = 0; // todo
 
-    SyncOption option{mss};
+    SyncOption option{local_mss};
 
     {
         auto buffer = send.send();
-        TCPHeader::generate((*buffer)[Range{}], IDENTIFIER, local.ip_addr, remote.ip_addr,
-                            local.port, remote.port, local_seq++, 0,
+        TCPHeader::generate((*buffer)[Range{}], 0, IDENTIFIER, local.ip_addr, remote.ip_addr, 64,
+                            local.port, remote.port, local_seq, 0,
                             false, false, false, false, false, false, false, true, false,
                             WINDOW, option.into_slice(), 0);
     }
@@ -384,8 +389,9 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
         auto buffer = recv->recv_timeout(300ms);
         if (buffer.none()) {
             auto send_buffer = send.send();
-            TCPHeader::generate((*send_buffer)[Range{}], IDENTIFIER, local.ip_addr, remote.ip_addr,
-                                local.port, remote.port, local_seq++, 0,
+            TCPHeader::generate((*send_buffer)[Range{}], 0, IDENTIFIER,
+                                local.ip_addr, remote.ip_addr, 64,
+                                local.port, remote.port, local_seq, 0,
                                 false, false, false, false, false, false, false, true, false,
                                 WINDOW, option.into_slice(), 0);
 
@@ -418,11 +424,12 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
 
         if (tcp_header->get_ack()) {
             if (ack) {
-                if (local_seq != tcp_header->get_ack_number()) {
+                if (local_seq + 1 != tcp_header->get_ack_number()) {
                     // todo
                 }
             } else {
                 ack = true;
+                local_seq = tcp_header->get_ack_number();
             }
         }
 
@@ -437,14 +444,15 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
             }
 
             auto send_buffer = send.send();
-            TCPHeader::generate((*send_buffer)[Range{}], IDENTIFIER, local.ip_addr, remote.ip_addr,
+            TCPHeader::generate((*send_buffer)[Range{}], 0, IDENTIFIER,
+                                local.ip_addr, remote.ip_addr, 64,
                                 local.port, remote.port, local_seq, remote_seq,
                                 false, false, false, false, true, false, false, false, false,
                                 WINDOW, Slice<uint8_t>{}, 0);
         }
 
         TCPOptionIter iter{tcp_option};
-
+        // todo
         for (auto item = iter.next(); !iter.is_end(item); item = iter.next()) {
             auto[op, data] = item;
 
@@ -454,10 +462,9 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
                 case TCPOption::NoOperation:
                     break;
                 case TCPOption::MaximumSegmentSize: {
-                    uint16_t value = (static_cast<uint16_t>(data[0]) << 8) |
-                                     (static_cast<uint16_t>(data[1]) << 0);
+                    remote_mss = (static_cast<uint16_t>(data[0]) << 8) |
+                                 (static_cast<uint16_t>(data[1]) << 0);
 
-                    if (value < mss) { mss = value; }
                 }
                     break;
                 case TCPOption::WindowScaleFactor:
@@ -472,6 +479,8 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
                     break;
                 case TCPOption::Timestamp:
                     break;
+                default:
+                    cs120_warn("unknown tcp option type!");
             }
         }
 
@@ -486,7 +495,7 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
     request_sender = request_send;
 
     auto *send_args = new TCPSendArgs{
-            .mss = mss,
+            .mss = local_mss,
             .send_queue = std::move(send),
             .request_receiver = std::move(request_recv),
             .connection = sender,

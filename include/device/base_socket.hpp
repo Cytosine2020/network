@@ -10,19 +10,21 @@
 #include "utility.hpp"
 #include "queue.hpp"
 #include "wire/ipv4.hpp"
+#include "server/ipv4_server.hpp"
 
 
 namespace cs120 {
 using PacketBuffer = Buffer<uint8_t, 2048>;
 
 
+template<typename T>
 class Demultiplexer {
 public:
     using Condition = std::function<bool(const IPV4Header *, Slice<uint8_t>, Slice<uint8_t>)>;
 
     struct Filter {
         Condition condition;
-        MPSCQueue<PacketBuffer>::Sender queue;
+        typename MPSCQueue<T>::Sender queue;
     };
 
     struct Request {
@@ -36,25 +38,25 @@ public:
     class ReceiverGuard {
     private:
         std::shared_ptr<Filter> filter;
-        MPSCQueue<Request>::Sender sender;
-        MPSCQueue<PacketBuffer>::Receiver receiver;
+        typename MPSCQueue<Request>::Sender sender;
+        typename MPSCQueue<T>::Receiver receiver;
 
     public:
         ReceiverGuard() noexcept: filter{nullptr}, sender{}, receiver{} {}
 
         ReceiverGuard(
                 std::shared_ptr<Filter> filter,
-                MPSCQueue<Request>::Sender sender,
-                MPSCQueue<PacketBuffer>::Receiver &&receiver
+                typename MPSCQueue<Request>::Sender sender,
+                typename MPSCQueue<T>::Receiver &&receiver
         ) : filter{std::move(filter)}, sender{std::move(sender)}, receiver{std::move(receiver)} {}
 
         ReceiverGuard(ReceiverGuard &&other) noexcept = default;
 
         ReceiverGuard &operator=(ReceiverGuard &&other) noexcept = default;
 
-        MPSCQueue<PacketBuffer>::Receiver &operator*() { return receiver; }
+        typename MPSCQueue<T>::Receiver &operator*() { return receiver; }
 
-        MPSCQueue<PacketBuffer>::Receiver *operator->() { return &receiver; }
+        typename MPSCQueue<T>::Receiver *operator->() { return &receiver; }
 
         ~ReceiverGuard() {
             if (filter != nullptr) {
@@ -65,15 +67,16 @@ public:
 
     class RequestSender {
     private:
-        MPSCQueue<Request>::Sender sender;
+        typename MPSCQueue<Request>::Sender sender;
 
     public:
         RequestSender() noexcept: sender{{nullptr}} {}
 
-        explicit RequestSender(MPSCQueue<Request>::Sender sender) : sender{std::move(sender)} {}
+        explicit RequestSender(typename MPSCQueue<Request>::Sender sender) :
+                sender{std::move(sender)} {}
 
         ReceiverGuard send(Condition &&condition, size_t size) {
-            auto[send, recv] = MPSCQueue<PacketBuffer>::channel(size);
+            auto[send, recv] = MPSCQueue<T>::channel(size);
 
             auto filter = std::shared_ptr<Filter>{new Filter{
                     std::move(condition), std::move(send)
@@ -86,9 +89,10 @@ public:
     };
 
 private:
-    MPSCQueue<Request>::Sender sender;
-    MPSCQueue<Request>::Receiver receiver;
+    typename MPSCQueue<Request>::Sender sender;
+    typename MPSCQueue<Request>::Receiver receiver;
     std::unordered_set<std::shared_ptr<Filter>> receivers;
+    IPV4FragmentReceiver assembler;
 
 public:
     explicit Demultiplexer(size_t size) : sender{nullptr}, receiver{nullptr}, receivers{} {
@@ -119,7 +123,10 @@ public:
             }
         }
 
-        auto[ip_header, ip_option, ip_data] = ipv4_split(datagram);
+        auto buffer = assembler.recv(datagram);
+        if (buffer.none()) { return; }
+
+        auto[ip_header, ip_option, ip_data] = ipv4_split(*buffer);
         if (ip_header == nullptr) {
             cs120_warn("invalid package!");
             return;
@@ -132,7 +139,7 @@ public:
             if (slot.none()) {
                 cs120_warn("package loss!");
             } else {
-                auto ip_datagram = datagram[Range{0, ip_header->get_total_length()}];
+                auto ip_datagram = (*buffer)[Range{0, ip_header->get_total_length()}];
                 (*slot)[Range{0, ip_datagram.size()}].copy_from_slice(ip_datagram);
             }
         }
@@ -146,10 +153,10 @@ public:
 
 class BaseSocket {
 public:
-    virtual size_t get_mtu() = 0;
+    virtual uint16_t get_mtu() = 0;
 
-    virtual std::pair<MPSCQueue<PacketBuffer>::Sender, Demultiplexer::ReceiverGuard>
-    bind(Demultiplexer::Condition &&condition, size_t size) = 0;
+    virtual std::pair<MPSCQueue<PacketBuffer>::Sender, Demultiplexer<PacketBuffer>::ReceiverGuard>
+    bind(Demultiplexer<PacketBuffer>::Condition &&condition, size_t size) = 0;
 
     virtual ~BaseSocket() = default;
 };

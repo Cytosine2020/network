@@ -4,7 +4,8 @@
 #include <sys/stat.h>
 
 #include "wire/wire.hpp"
-#include "device/raw_socket.hpp"
+#include "device/unix_socket.hpp"
+#include "device/athernet_socket.hpp"
 #include "server/tcp_server.hpp"
 
 
@@ -38,9 +39,20 @@ int main(int argc, char **argv) {
 
         Slice<uint8_t> data{reinterpret_cast<uint8_t *>(buffer), static_cast<size_t>(tmp.st_size)};
 
-        if (strcmp(device, "-a") == 0) {
-            std::shared_ptr<BaseSocket> sock{new RawSocket{64}};
+        if (strcmp(device, "-a") == 0 || strcmp(device, "-e") == 0) {
+            std::shared_ptr<BaseSocket> sock{};
+
+            if (strcmp(device, "-a") == 0) {
+                sock = std::shared_ptr<BaseSocket>{new UnixSocket{64}};
+            } else if (strcmp(device, "-e") == 0) {
+                sock = std::shared_ptr<BaseSocket>{new AthernetSocket{64}};
+            } else {
+                cs120_unreachable("");
+            }
+
             TCPClient connect{sock, 64, src, dest};
+
+            sleep(1); // FIXME: the filter is not updated quick enough
 
             size_t i = 0, j = 0;
             for (; i < data.size(); ++i) {
@@ -52,7 +64,7 @@ int main(int argc, char **argv) {
             }
 
             if (j < i) { connect.send(data[Range{j, i}]); }
-        } else if (strcmp(device, "-e") == 0) {
+        } else if (strcmp(device, "-s") == 0) {
             int sock = socket(AF_INET, SOCK_STREAM, 0);
             if (sock < 0) { cs120_abort("socket error"); }
 
@@ -110,8 +122,17 @@ int main(int argc, char **argv) {
 
         Array<uint8_t> buffer{2048};
 
-        if (strcmp(device, "-a") == 0) {
-            std::shared_ptr<BaseSocket> sock{new RawSocket{64}};
+        if (strcmp(device, "-a") == 0 || strcmp(device, "-e") == 0) {
+            std::shared_ptr<BaseSocket> sock{};
+
+            if (strcmp(device, "-a") == 0) {
+                sock = std::shared_ptr<BaseSocket>{new UnixSocket{64}};
+            } else if (strcmp(device, "-e") == 0) {
+                sock = std::shared_ptr<BaseSocket>{new AthernetSocket{64}};
+            } else {
+                cs120_unreachable("");
+            }
+
             TCPClient connect{sock, 64, src, dest};
 
             for (;;) {
@@ -125,7 +146,7 @@ int main(int argc, char **argv) {
                 printf("%s:%u: ", inet_ntoa(in_addr{dest.ip_addr}), dest.port);
                 printf("%.*s\n", static_cast<uint32_t>(size), buffer.begin());
             }
-        } else if (strcmp(device, "-e") == 0) {
+        } else if (strcmp(device, "-s") == 0) {
             int sock = socket(AF_INET, SOCK_STREAM, 0);
             if (sock < 0) { cs120_abort("socket error"); }
 

@@ -10,7 +10,7 @@ class UDPServer {
 private:
     std::shared_ptr<BaseSocket> device;
     MPSCQueue<PacketBuffer>::Sender send_queue;
-    Demultiplexer::ReceiverGuard recv_queue;
+    Demultiplexer<PacketBuffer>::ReceiverGuard recv_queue;
     uint32_t src_ip, dest_ip;
     uint16_t src_port, dest_port;
     Array<uint8_t> receive_buffer;

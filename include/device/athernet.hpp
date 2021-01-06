@@ -15,7 +15,7 @@ constexpr size_t ATHERNET_MTU = 256;
 
 struct unix_socket_recv_args {
     int athernet;
-    Demultiplexer demultiplexer;
+    Demultiplexer<PacketBuffer> demultiplexer;
 };
 
 struct unix_socket_send_args {

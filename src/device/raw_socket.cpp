@@ -55,16 +55,13 @@ void *raw_socket_sender(void *args_) {
 
 struct pcap_callback_args {
     pcap_t *pcap_handle;
-    Demultiplexer demultiplexer;
+    Demultiplexer<PacketBuffer> demultiplexer;
 };
 
 void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *packet) {
     auto *args = reinterpret_cast<pcap_callback_args *>(args_);
 
-    if (info->caplen != info->len) {
-        cs120_warn("packet truncated!");
-        return;
-    }
+    if (info->caplen != info->len) { cs120_abort("packet truncated!"); }
 
     Slice<uint8_t> eth_datagram{packet, info->caplen};
 
@@ -96,8 +93,7 @@ void *raw_socket_receiver(void *args_) {
 
 
 namespace cs120 {
-RawSocket::RawSocket(size_t size) :
-        receiver{}, sender{}, recv_queue{}, send_queue{} {
+RawSocket::RawSocket(size_t size) : receiver{}, sender{}, recv_queue{}, send_queue{} {
     char pcap_error[PCAP_ERRBUF_SIZE]{};
     pcap_if_t *device = nullptr;
 
@@ -117,7 +113,7 @@ RawSocket::RawSocket(size_t size) :
 
     auto *recv_args = new pcap_callback_args{
             .pcap_handle = pcap_handle,
-            .demultiplexer = Demultiplexer{size},
+            .demultiplexer = Demultiplexer<PacketBuffer>{size},
     };
 
     auto *send_args = new raw_socket_sender_args{

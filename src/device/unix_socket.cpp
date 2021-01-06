@@ -28,7 +28,7 @@ UnixSocket::UnixSocket(size_t size) :
 
     auto *receiver_args = new unix_socket_recv_args{
             .athernet = athernet,
-            .demultiplexer = Demultiplexer{size},
+            .demultiplexer = Demultiplexer<PacketBuffer>{size},
     };
 
     auto *sender_args = new unix_socket_send_args{

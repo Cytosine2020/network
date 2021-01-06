@@ -34,7 +34,7 @@ int main(int argc, char **argv) {
 
     sleep(1); // FIXME: the filter is not updated quick enough
 
-    for (size_t i = 0; i < 10; ++i) {
+    for (size_t i = 0; i < 1000; ++i) {
         auto start = std::chrono::steady_clock::now();
         if (client.ping(i)) {
             auto end = std::chrono::steady_clock::now();

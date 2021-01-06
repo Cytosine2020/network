@@ -55,13 +55,15 @@ public:
         }
     };
 
-    static Guard generate(MutSlice<uint8_t> frame, uint16_t identifier,
-                          uint32_t src_ip, uint32_t dest_ip,
+    static Guard generate(MutSlice<uint8_t> frame, uint8_t type_of_service,
+                          uint16_t identification, uint32_t src_ip, uint32_t dest_ip,
+                          uint8_t time_to_live,
                           uint16_t src_port, uint16_t dest_port, size_t len) {
         size_t udp_size = sizeof(UDPHeader) + len;
 
-        auto udp_frame = IPV4Header::generate(frame, identifier, IPV4Protocol::UDP,
-                                                     src_ip, dest_ip, udp_size);
+        auto udp_frame = IPV4Header::generate(frame, type_of_service, identification,
+                                              IPV4Protocol::UDP, src_ip, dest_ip,
+                                              0, true, false, time_to_live, udp_size);
 
         if (udp_frame.empty()) { return {}; }
 

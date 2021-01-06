@@ -107,7 +107,7 @@ private:
     size_t end_;
 
 public:
-    Range() : begin_{0}, end_{0} {}
+    Range() noexcept: begin_{0}, end_{0} {}
 
     explicit Range(size_t start) : begin_{start}, end_{0} {}
 
@@ -294,7 +294,9 @@ private:
     T inner[len];
 
 public:
-    Buffer() : inner{} {}
+    Buffer() noexcept: inner{} {}
+
+    Buffer(T inner[len]) : inner{inner} {}
 
     size_t size() const { return len; }
 
@@ -305,8 +307,6 @@ public:
     const T *begin() const { return inner; }
 
     const T *end() const { return inner + len; }
-
-    ~Buffer() = default;
 };
 
 template<typename T>
@@ -316,7 +316,7 @@ private:
     size_t size_;
 
 public:
-    Array() : inner{nullptr}, size_{0} {}
+    Array() noexcept: inner{nullptr}, size_{0} {}
 
     explicit Array(size_t size) : inner{new T[size]{}}, size_{size} {}
 
@@ -355,7 +355,7 @@ private:
     size_t size_;
 
 public:
-    MutSlice() : inner{nullptr}, size_{0} {}
+    MutSlice() noexcept: inner{nullptr}, size_{0} {}
 
     MutSlice(T *inner, size_t size_) : inner{inner}, size_{size_} {
         auto ptr = reinterpret_cast<size_t>(inner);
@@ -373,8 +373,6 @@ public:
     const T *begin() const { return inner; }
 
     const T *end() const { return inner + size_; }
-
-    ~MutSlice() = default;
 };
 
 template<typename T>
@@ -384,7 +382,7 @@ private:
     size_t size_;
 
 public:
-    Slice() : inner{nullptr}, size_{0} {}
+    Slice() noexcept: inner{nullptr}, size_{0} {}
 
     Slice(MutSlice<T> other) : inner{other.begin()}, size_{other.size()} {}
 
@@ -400,8 +398,18 @@ public:
     const T *begin() const { return inner; }
 
     const T *end() const { return inner + size_; }
+};
 
-    ~Slice() = default;
+template<typename SubT>
+class IntoSliceTrait {
+public:
+    Slice<uint8_t> into_slice() const {
+        return Slice<uint8_t>{reinterpret_cast<const uint8_t *>(this), sizeof(SubT)};
+    }
+
+    MutSlice<uint8_t> into_slice() {
+        return MutSlice<uint8_t>{reinterpret_cast<uint8_t *>(this), sizeof(SubT)};
+    }
 };
 }
 

@@ -46,8 +46,8 @@ size_t UDPServer::send(Slice<uint8_t> data) {
         size_t size = std::min(maximum, data.size());
 
         {
-            UDPHeader::generate((*buffer)[Range{}], identifier, src_ip, dest_ip,
-                                src_port, dest_port, size)
+            UDPHeader::generate((*buffer)[Range{}], 0, identifier, src_ip, dest_ip,
+                                src_port, dest_port, 64, size)
                     ->copy_from_slice(data[Range{0, size}]);
         }
 

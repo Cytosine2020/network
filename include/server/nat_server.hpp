@@ -13,6 +13,7 @@
 #include "wire/icmp.hpp"
 #include "wire/udp.hpp"
 #include "wire/tcp.hpp"
+#include "ipv4_server.hpp"
 
 
 namespace cs120 {
@@ -35,8 +36,8 @@ private:
     pthread_t lan_to_wan, wan_to_lan;
     std::shared_ptr<BaseSocket> lan, wan;
 
-    MPSCQueue<PacketBuffer>::Sender lan_sender, wan_sender;
-    Demultiplexer::ReceiverGuard lan_receiver, wan_receiver;
+    IPV4FragmentSender<PacketBuffer> lan_sender, wan_sender;
+    Demultiplexer<PacketBuffer>::ReceiverGuard lan_receiver, wan_receiver;
 
     Array<std::atomic<EndPoint>> nat_table; // shared between lan to wan and wan to lan
     std::unordered_map<EndPoint, uint16_t> nat_reverse_table;

@@ -13,7 +13,7 @@ namespace cs120 {
 class RawSocket : public BaseSocket {
 private:
     pthread_t receiver, sender;
-    Demultiplexer::RequestSender recv_queue;
+    Demultiplexer<PacketBuffer>::RequestSender recv_queue;
     MPSCQueue<PacketBuffer>::Sender send_queue;
 
 public:
@@ -23,10 +23,10 @@ public:
 
     RawSocket &operator=(RawSocket &&other) noexcept = default;
 
-    size_t get_mtu() final { return 1500; }
+    uint16_t get_mtu() final { return 1500; }
 
-    std::pair<MPSCQueue<PacketBuffer>::Sender, Demultiplexer::ReceiverGuard>
-    bind(Demultiplexer::Condition &&condition, size_t size) final {
+    std::pair<MPSCQueue<PacketBuffer>::Sender, Demultiplexer<PacketBuffer>::ReceiverGuard>
+    bind(Demultiplexer<PacketBuffer>::Condition &&condition, size_t size) final {
         return std::make_pair(send_queue, recv_queue.send(std::move(condition), size));
     }
 

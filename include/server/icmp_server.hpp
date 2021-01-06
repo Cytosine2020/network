@@ -7,19 +7,20 @@
 #include "utility.hpp"
 #include "queue.hpp"
 #include "device/base_socket.hpp"
+#include "wire/icmp.hpp"
 
 
 namespace cs120 {
 class ICMPPing {
 private:
     MPSCQueue<PacketBuffer>::Sender send_queue;
-    Demultiplexer::ReceiverGuard recv_queue;
+    Demultiplexer<PacketBuffer>::ReceiverGuard recv_queue;
     uint32_t src_ip, dest_ip;
     uint16_t src_port, dest_port;
     uint16_t identification;
 
 public:
-    ICMPPing(MPSCQueue<PacketBuffer>::Sender send_queue, Demultiplexer::ReceiverGuard recv_queue,
+    ICMPPing(MPSCQueue<PacketBuffer>::Sender send_queue, Demultiplexer<PacketBuffer>::ReceiverGuard recv_queue,
              uint32_t src_ip, uint32_t dest_ip, uint16_t src_port, uint16_t dest_port,
              uint16_t identification) :
             send_queue{std::move(send_queue)}, recv_queue{std::move(recv_queue)},
@@ -36,7 +37,7 @@ private:
     std::shared_ptr<BaseSocket> device;
     pthread_t receiver;
     MPSCQueue<PacketBuffer>::Sender send_queue;
-    Demultiplexer::ReceiverGuard recv_queue;
+    Demultiplexer<PacketBuffer>::ReceiverGuard recv_queue;
     uint32_t ip_addr;
 
     static void *icmp_receiver(void *args) {

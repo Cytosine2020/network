@@ -18,7 +18,7 @@ enum class IPV4Protocol : uint8_t {
 };
 
 
-struct IPV4Header {
+struct IPV4Header : public IntoSliceTrait<IPV4Header> {
 private:
     static constexpr uint8_t VERSION = 4;
 
@@ -47,40 +47,37 @@ private:
 public:
     static size_t max_payload(size_t mtu) { return (mtu - sizeof(IPV4Header)) / 8 * 8; }
 
-    IPV4Header( uint16_t identifier, IPV4Protocol protocol,
-               uint32_t src_ip, uint32_t dest_ip, size_t len) {
+    IPV4Header(uint8_t type_of_service, uint16_t identification, IPV4Protocol protocol,
+               uint32_t src_ip, uint32_t dest_ip,
+               size_t offset, bool do_not_fragment, bool more_fragment,
+               uint8_t time_to_live, size_t len) {
         set_header_length(sizeof(IPV4Header));
         set_version();
-        set_type_of_service(0);
+        set_type_of_service(type_of_service);
         set_total_length(sizeof(IPV4Header) + len);
-        set_identification(identifier);
-        set_fragment(0, true, false);
-        set_time_to_live(64);
+        set_identification(identification);
+        set_fragment(offset, do_not_fragment, more_fragment);
+        set_time_to_live(time_to_live);
         set_protocol(protocol);
         set_checksum(0);
         set_src_ip(src_ip);
         set_dest_ip(dest_ip);
     }
 
-    static MutSlice<uint8_t> generate(MutSlice<uint8_t> frame, uint16_t identifier,
-                                      IPV4Protocol protocol, uint32_t src_ip, uint32_t dest_ip,
-                                      size_t len) {
+    static MutSlice<uint8_t> generate(MutSlice<uint8_t> frame, uint8_t type_of_service,
+                                      uint16_t identification, IPV4Protocol protocol,
+                                      uint32_t src_ip, uint32_t dest_ip,
+                                      size_t offset, bool do_not_fragment, bool more_fragment,
+                                      uint8_t time_to_live, size_t len) {
         if (frame.size() < sizeof(IPV4Header) + len) { return {}; }
 
         auto *ip_header = reinterpret_cast<IPV4Header *>(frame.begin());
-        new(ip_header)IPV4Header{identifier, protocol, src_ip, dest_ip, len};
+        new(ip_header)IPV4Header{type_of_service, identification, protocol, src_ip, dest_ip,
+                                 offset, do_not_fragment, more_fragment, time_to_live, len};
 
         ip_header->set_checksum(complement_checksum(ip_header->into_slice()));
 
         return frame[Range{sizeof(IPV4Header)}][Range{0, len}];
-    }
-
-    Slice<uint8_t> into_slice() const {
-        return Slice<uint8_t>{reinterpret_cast<const uint8_t *>(this), get_header_length()};
-    }
-
-    MutSlice<uint8_t> into_slice() {
-        return MutSlice<uint8_t>{reinterpret_cast<uint8_t *>(this), get_header_length()};
     }
 
     static const IPV4Header *from_slice(Slice<uint8_t> data) {
@@ -186,11 +183,11 @@ public:
 }__attribute__((packed));
 
 
-struct IPV4PseudoHeader {
+struct IPV4PseudoHeader : public IntoSliceTrait<IPV4PseudoHeader> {
 private:
     uint32_t src_ip;
     uint32_t dest_ip;
-    uint8_t padding;
+    uint8_t padding = 0;
     IPV4Protocol protocol;
     uint16_t data_length;
 
@@ -199,7 +196,6 @@ public:
                      IPV4Protocol protocol, uint16_t data_length) {
         set_src_ip(source_ip);
         set_dest_ip(destination_ip);
-        padding = 0;
         set_protocol(protocol);
         set_data_length(data_length);
     }
@@ -207,17 +203,8 @@ public:
     explicit IPV4PseudoHeader(const IPV4Header &other) {
         set_src_ip(other.get_src_ip());
         set_dest_ip(other.get_dest_ip());
-        padding = 0;
         set_protocol(other.get_protocol());
-        set_data_length(other.get_total_length() - other.get_header_length());
-    }
-
-    Slice<uint8_t> into_slice() const {
-        return Slice<uint8_t>{reinterpret_cast<const uint8_t *>(this), sizeof(IPV4PseudoHeader)};
-    }
-
-    MutSlice<uint8_t> into_slice() {
-        return MutSlice<uint8_t>{reinterpret_cast<uint8_t *>(this), sizeof(IPV4PseudoHeader)};
+        set_data_length(other.get_data_length());
     }
 
     uint32_t get_src_ip() const { return src_ip; }
@@ -238,6 +225,8 @@ public:
         if (value > std::numeric_limits<uint16_t>::max()) { cs120_abort("invalid total length!"); }
         data_length = htons(value);
     }
+
+    uint8_t get_padding() const { return padding; }
 }__attribute__((packed));
 
 

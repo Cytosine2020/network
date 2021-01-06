@@ -161,8 +161,9 @@ public:
         }
     };
 
-    static Guard generate(MutSlice<uint8_t> frame, uint16_t identifier,
+    static Guard generate(MutSlice<uint8_t> frame, uint8_t type_of_service, uint16_t identifier,
                           uint32_t src_ip, uint32_t dest_ip,
+                          uint8_t time_to_live,
                           uint16_t src_port, uint16_t dest_port,
                           uint32_t sequence, uint32_t ack_number,
                           bool nonce_sum, bool cwr, bool ece, bool urgent, bool ack,
@@ -170,8 +171,10 @@ public:
                           uint16_t window, Slice<uint8_t> option, size_t len) {
         size_t tcp_size = sizeof(TCPHeader) + option.size() + len;
 
-        auto tcp_frame = IPV4Header::generate(frame, identifier, IPV4Protocol::TCP,
-                                              src_ip, dest_ip, tcp_size);
+        auto tcp_frame = IPV4Header::generate(frame, type_of_service, identifier,
+                                              IPV4Protocol::TCP, src_ip, dest_ip,
+                                              0, true, false, time_to_live,
+                                              tcp_size);
 
         if (tcp_frame.empty()) { return {}; }
 

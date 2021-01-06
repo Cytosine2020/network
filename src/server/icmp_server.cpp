@@ -13,14 +13,13 @@ namespace cs120 {
 bool ICMPPing::ping(uint16_t seq) {
     using namespace std::literals;
 
-    ICMPData send_port{src_port, dest_port};
-    Slice<uint8_t> data{reinterpret_cast<uint8_t *>(&send_port), sizeof(ICMPData)};
+    ICMPEcho data{identification, seq, src_port, dest_port};
 
     {
         auto buffer = send_queue.send();
-        ICMPHeader::generate((*buffer)[Range{}], seq + 1, src_ip, dest_ip,
-                             ICMPType::EchoRequest, identification, seq, data.size())
-                ->copy_from_slice(data);
+        ICMPHeader::generate((*buffer)[Range{}], 0, seq + 1, src_ip, dest_ip, 64,
+                             ICMPType::EchoRequest, 0, sizeof(ICMPEcho))
+                ->copy_from_slice(data.into_slice());
     }
 
     auto deadline = std::chrono::system_clock::now() + 1s;
@@ -35,13 +34,15 @@ bool ICMPPing::ping(uint16_t seq) {
             continue;
         }
 
-        auto *icmp_header = ip_data.buffer_cast<ICMPHeader>();
+        auto[icmp_header, icmp_data] = icmp_split(ip_data);
         if (icmp_header == nullptr || complement_checksum(ip_data) != 0) {
             cs120_warn("invalid package!");
             continue;
         }
 
-        if (icmp_header->get_sequence() != seq) { continue; }
+        auto *echo_data = icmp_data.buffer_cast<ICMPEcho>();
+
+        if (echo_data->get_sequence() != seq) { continue; }
 
         break;
     }
@@ -112,20 +113,19 @@ ICMPPing ICMPServer::create_ping(uint16_t identification, uint32_t dest_ip,
         if (ip_header->get_protocol() != IPV4Protocol::ICMP ||
             ip_header->get_dest_ip() != ip_addr) { return false; }
 
-        auto *icmp_header = ip_data.template buffer_cast<ICMPHeader>();
+        auto[icmp_header, icmp_data] = icmp_split(ip_data);
         if (icmp_header == nullptr) {
             cs120_warn("invalid package!");
             return false;
         }
 
+        auto *echo_data = icmp_data.template buffer_cast<ICMPEcho>();
+
         if (icmp_header->get_type() != ICMPType::EchoReply ||
             icmp_header->get_code() != 0 ||
-            icmp_header->get_identification() != identification) { return false; }
-
-        auto icmp_data = ip_data[Range{sizeof(ICMPHeader)}];
-        if (icmp_data.size() < sizeof(ICMPData)) { return false; }
-        auto *recv_port = reinterpret_cast<const ICMPData *>(icmp_data.begin());
-        if (recv_port->src_port != src_port || recv_port->dest_port != dest_port) { return false; }
+            echo_data->get_identification() != identification ||
+            echo_data->get_src_port() != src_port ||
+            echo_data->get_dest_port() != dest_port) { return false; }
 
         return true;
     }, 64);

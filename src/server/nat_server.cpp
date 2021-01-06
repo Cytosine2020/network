@@ -49,8 +49,8 @@ NatServer::NatServer(uint32_t lan_addr, uint32_t wan_addr, std::shared_ptr<BaseS
         return true;
     }, size);
 
-    lan_sender = std::move(lan_send);
-    wan_sender = std::move(wan_send);
+    lan_sender = IPV4FragmentSender<PacketBuffer>{std::move(lan_send), lan->get_mtu()};
+    wan_sender = IPV4FragmentSender<PacketBuffer>{std::move(wan_send), wan->get_mtu()};
     lan_receiver = std::move(lan_recv);
     wan_receiver = std::move(wan_recv);
 
@@ -59,7 +59,7 @@ NatServer::NatServer(uint32_t lan_addr, uint32_t wan_addr, std::shared_ptr<BaseS
 }
 
 void NatServer::nat_lan_to_wan() {
-    size_t wan_mtu = wan->get_mtu();
+    uint16_t wan_mtu = wan->get_mtu();
 
     for (;;) {
         auto receive = lan_receiver->recv();
@@ -75,22 +75,20 @@ void NatServer::nat_lan_to_wan() {
         uint16_t lan_port;
         switch (ip_header->get_protocol()) {
             case IPV4Protocol::ICMP: {
-                auto *icmp_header = ip_data.buffer_cast<ICMPHeader>();
+                auto[icmp_header, icmp_data] = icmp_split(ip_data);
                 if (icmp_header == nullptr || complement_checksum(ip_data) != 0) {
                     cs120_warn("invalid package!");
                     continue;
                 }
 
-                auto icmp_data = ip_data[Range{sizeof(ICMPHeader)}];
-                if (icmp_data.size() < sizeof(ICMPData)) { continue; }
-                auto *recv_port = reinterpret_cast<struct ICMPData *>(icmp_data.begin());
+                auto *echo_data = icmp_data.buffer_cast<ICMPEcho>();
 
                 switch (icmp_header->get_type()) {
                     case ICMPType::EchoReply:
-                        lan_port = recv_port->dest_port;
+                        lan_port = echo_data->get_dest_port();
                         break;
                     case ICMPType::EchoRequest:
-                        lan_port = recv_port->src_port;
+                        lan_port = echo_data->get_src_port();
                         break;
                     default:
                         continue;
@@ -121,8 +119,25 @@ void NatServer::nat_lan_to_wan() {
         }
 
         size_t ip_data_size = ip_header->get_total_length();
-        if (ip_data_size > wan_mtu) {
-            cs120_warn("package truncated!");
+        if (ip_data_size > wan_mtu && ip_header->get_do_not_fragment()) {
+            ICMPUnreachable data{wan_mtu};
+
+            size_t icmp_header_size = ip_header->get_header_length() + 8;
+            size_t icmp_data_size = sizeof(ICMPUnreachable) + icmp_header_size;
+
+            auto send = wan_sender->try_send();
+            if (send.none()) {
+                cs120_warn("package loss!");
+            } else {
+                auto buffer = ICMPHeader::generate((*send)[Range{}], 0, 0, wan_addr, src_ip, 64,
+                                                   ICMPType::EchoRequest, 0, icmp_data_size);
+
+                (*buffer)[Range{0, sizeof(ICMPUnreachable)}]
+                        .copy_from_slice(data.into_slice());
+                (*buffer)[Range{sizeof(ICMPUnreachable), icmp_data_size}]
+                        .copy_from_slice((*receive)[Range{0, icmp_header_size}]);
+            }
+
             continue;
         }
 
@@ -158,14 +173,14 @@ void NatServer::nat_lan_to_wan() {
             case IPV4Protocol::ICMP: {
                 auto *icmp_header = reinterpret_cast<ICMPHeader *>(ip_data.begin());
                 auto icmp_data = ip_data[Range{sizeof(ICMPHeader)}];
-                auto *recv_port = reinterpret_cast<struct ICMPData *>(icmp_data.begin());
+                auto *echo_data = reinterpret_cast<struct ICMPEcho *>(icmp_data.begin());
 
                 switch (icmp_header->get_type()) {
                     case ICMPType::EchoReply:
-                        recv_port->dest_port = wan_port;
+                        echo_data->set_dest_port(wan_port);
                         break;
                     case ICMPType::EchoRequest:
-                        recv_port->src_port = wan_port;
+                        echo_data->set_src_port(wan_port);
                         break;
                     default:
                         continue;
@@ -193,17 +208,14 @@ void NatServer::nat_lan_to_wan() {
                 cs120_unreachable("checked before!");
         }
 
-        auto send = wan_sender.try_send();
-        if (send.none()) {
+        if (wan_sender.send((*receive)[Range{0, ip_data_size}]) < ip_data_size) {
             cs120_warn("package loss!");
-        } else {
-            (*send)[Range{0, ip_data_size}].copy_from_slice((*receive)[Range{0, ip_data_size}]);
         }
     }
 }
 
 void NatServer::nat_wan_to_lan() {
-    size_t lan_mtu = lan->get_mtu();
+    uint16_t lan_mtu = lan->get_mtu();
 
     for (;;) {
         auto receive = wan_receiver->recv();
@@ -214,30 +226,29 @@ void NatServer::nat_wan_to_lan() {
             continue;
         }
 
+        uint32_t src_ip = ip_header->get_src_ip();
+
         uint16_t wan_port;
         switch (ip_header->get_protocol()) {
             case IPV4Protocol::ICMP: {
-                auto *icmp_header = ip_data.buffer_cast<ICMPHeader>();
+                auto[icmp_header, icmp_data] = icmp_split(ip_data);
                 if (icmp_header == nullptr || complement_checksum(ip_data) != 0) {
                     cs120_warn("invalid package!");
                     continue;
                 }
 
-                auto icmp_data = ip_data[Range{sizeof(ICMPHeader)}];
-                if (icmp_data.size() < sizeof(ICMPData)) { continue; }
-                auto *recv_port = reinterpret_cast<struct ICMPData *>(icmp_data.begin());
+                auto *echo_data = icmp_data.buffer_cast<ICMPEcho>();
 
                 switch (icmp_header->get_type()) {
                     case ICMPType::EchoReply:
-                        wan_port = recv_port->src_port;
+                        wan_port = echo_data->get_src_port();
                         break;
                     case ICMPType::EchoRequest:
-                        wan_port = recv_port->dest_port;
+                        wan_port = echo_data->get_dest_port();
                         break;
                     default:
                         continue;
                 }
-
                 break;
             }
             case IPV4Protocol::UDP: {
@@ -270,8 +281,27 @@ void NatServer::nat_wan_to_lan() {
         if (end_point.empty()) { continue; }
 
         size_t ip_data_size = ip_header->get_total_length();
-        if (ip_data_size > lan_mtu) {
-            cs120_warn("package truncated!");
+        if (ip_data_size > lan_mtu && ip_header->get_do_not_fragment()) {
+            ICMPUnreachable data{lan_mtu};
+
+            size_t icmp_header_size = ip_header->get_header_length() + 8;
+            size_t icmp_data_size = sizeof(ICMPUnreachable) + icmp_header_size;
+
+            auto send = wan_sender->try_send();
+            if (send.none()) {
+                cs120_warn("package loss!");
+            } else {
+                auto buffer = ICMPHeader::generate((*send)[Range{}], 0, 0, wan_addr, src_ip, 64,
+                                                   ICMPType::Unreachable,
+                                                   ICMPUnreachable::DatagramTooBig,
+                                                   icmp_data_size);
+
+                (*buffer)[Range{0, sizeof(ICMPUnreachable)}]
+                        .copy_from_slice(data.into_slice());
+                (*buffer)[Range{sizeof(ICMPUnreachable), icmp_data_size}]
+                        .copy_from_slice((*receive)[Range{0, icmp_header_size}]);
+            }
+
             continue;
         }
 
@@ -284,14 +314,14 @@ void NatServer::nat_wan_to_lan() {
             case IPV4Protocol::ICMP: {
                 auto *icmp_header = reinterpret_cast<ICMPHeader *>(ip_data.begin());
                 auto icmp_data = ip_data[Range{sizeof(ICMPHeader)}];
-                auto *recv_port = reinterpret_cast<struct ICMPData *>(icmp_data.begin());
+                auto *echo_data = reinterpret_cast<struct ICMPEcho *>(icmp_data.begin());
 
                 switch (icmp_header->get_type()) {
                     case ICMPType::EchoReply:
-                        recv_port->src_port = end_point.port;
+                        echo_data->set_src_port(end_point.port);
                         break;
                     case ICMPType::EchoRequest:
-                        recv_port->dest_port = end_point.port;
+                        echo_data->set_dest_port(end_point.port);
                         break;
                     default:
                         continue;
@@ -316,14 +346,11 @@ void NatServer::nat_wan_to_lan() {
                 break;
             }
             default:
-                cs120_unreachable("checked before!");;
+                cs120_unreachable("checked before!");
         }
 
-        auto send = lan_sender.try_send();
-        if (send.none()) {
+        if (lan_sender.send((*receive)[Range{0, ip_data_size}]) < ip_data_size) {
             cs120_warn("package loss!");
-        } else {
-            (*send)[Range{0, ip_data_size}].copy_from_slice((*receive)[Range{0, ip_data_size}]);
         }
     }
 }

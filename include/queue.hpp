@@ -20,14 +20,33 @@ public:
     class SenderSlotGuard {
     private:
         T *inner;
-        MPSCQueue<T> &queue;
+        MPSCQueue<T> *queue;
 
     public:
-        SenderSlotGuard(T *inner, MPSCQueue<T> &queue) : inner{inner}, queue{queue} {}
+        SenderSlotGuard() noexcept: inner{nullptr}, queue{nullptr} {}
 
-        SenderSlotGuard(SenderSlotGuard &&other) noexcept = default;
+        SenderSlotGuard(T *inner, MPSCQueue<T> *queue) : inner{inner}, queue{queue} {}
 
-        SenderSlotGuard &operator=(SenderSlotGuard &&other) noexcept = default;
+        SenderSlotGuard(SenderSlotGuard &&other) noexcept {
+            if (this != &other) {
+                this->inner = other.inner;
+                this->queue = other.queue;
+                other.inner = nullptr;
+                other.queue = nullptr;
+            }
+        }
+
+        SenderSlotGuard &operator=(SenderSlotGuard &&other) noexcept {
+            if (this != &other) {
+                if (!none()) { queue->commit(); }
+                this->inner = other.inner;
+                this->queue = other.queue;
+                other.inner = nullptr;
+                other.queue = nullptr;
+            }
+
+            return *this;
+        }
 
         bool none() const { return inner == nullptr; }
 
@@ -35,21 +54,40 @@ public:
 
         T *operator->() { return inner; }
 
-        ~SenderSlotGuard() { if (!none()) { queue.commit(); }}
+        ~SenderSlotGuard() { if (!none()) { queue->commit(); }}
     };
 
 
     class ReceiverSlotGuard {
     private:
         T *inner;
-        MPSCQueue<T> &queue;
+        MPSCQueue<T> *queue;
 
     public:
-        ReceiverSlotGuard(T *inner, MPSCQueue<T> &queue) : inner{inner}, queue{queue} {}
+        ReceiverSlotGuard() noexcept: inner{nullptr}, queue{nullptr} {}
 
-        ReceiverSlotGuard(ReceiverSlotGuard &&other) noexcept = default;
+        ReceiverSlotGuard(T *inner, MPSCQueue<T> *queue) : inner{inner}, queue{queue} {}
 
-        ReceiverSlotGuard &operator=(ReceiverSlotGuard &&other) noexcept = default;
+        ReceiverSlotGuard(ReceiverSlotGuard &&other) noexcept {
+            if (this != &other) {
+                this->inner = other.inner;
+                this->queue = other.queue;
+                other.inner = nullptr;
+                other.queue = nullptr;
+            }
+        }
+
+        ReceiverSlotGuard &operator=(ReceiverSlotGuard &&other) noexcept {
+            if (this != &other) {
+                if (!none()) { queue->claim(); }
+                this->inner = other.inner;
+                this->queue = other.queue;
+                other.inner = nullptr;
+                other.queue = nullptr;
+            }
+
+            return *this;
+        }
 
         bool none() const { return inner == nullptr; }
 
@@ -57,7 +95,7 @@ public:
 
         T *operator->() { return inner; }
 
-        ~ReceiverSlotGuard() { if (!none()) { queue.claim(); }}
+        ~ReceiverSlotGuard() { if (!none()) { queue->claim(); }}
     };
 
 
@@ -66,7 +104,7 @@ public:
         std::shared_ptr<MPSCQueue<T>> queue;
 
     public:
-        Sender() : queue{nullptr} {}
+        Sender() noexcept: queue{nullptr} {}
 
         explicit Sender(std::shared_ptr<MPSCQueue<T>> queue) : queue{queue} {}
 
@@ -91,7 +129,7 @@ public:
         std::shared_ptr<MPSCQueue<T>> queue;
 
     public:
-        Receiver() : queue{nullptr} {}
+        Receiver() noexcept: queue{nullptr} {}
 
         explicit Receiver(std::shared_ptr<MPSCQueue<T>> queue) : queue{queue} {}
 
@@ -143,9 +181,9 @@ public:
 
         if (index_increase(end) == start.load()) {
             sender_lock.unlock();
-            return SenderSlotGuard{nullptr, *this};
+            return SenderSlotGuard{};
         } else {
-            return SenderSlotGuard{&inner[end.load()], *this};
+            return SenderSlotGuard{&inner[end.load()], this};
         }
     }
 
@@ -160,7 +198,7 @@ public:
             }
         }
 
-        return SenderSlotGuard{&inner[end.load()], *this};
+        return SenderSlotGuard{&inner[end.load()], this};
     }
 
     void commit() {
@@ -176,9 +214,9 @@ public:
 
         if (start.load() == end.load()) {
             receiver_lock.unlock();
-            return ReceiverSlotGuard{nullptr, *this};
+            return ReceiverSlotGuard{};
         } else {
-            return ReceiverSlotGuard{&inner[start.load()], *this};
+            return ReceiverSlotGuard{&inner[start.load()], this};
         }
     }
 
@@ -193,7 +231,7 @@ public:
             }
         }
 
-        return ReceiverSlotGuard{&inner[start.load()], *this};
+        return ReceiverSlotGuard{&inner[start.load()], this};
     }
 
     template<class RepT, class PeriodT>
@@ -206,12 +244,12 @@ public:
             while (start.load() == end.load()) {
                 if (empty.template wait_for(guard, period) == std::cv_status::timeout) {
                     receiver_lock.unlock();
-                    return ReceiverSlotGuard{nullptr, *this};
+                    return ReceiverSlotGuard{};
                 }
             }
         }
 
-        return ReceiverSlotGuard{&inner[start.load()], *this};
+        return ReceiverSlotGuard{&inner[start.load()], this};
     }
 
     template<typename ClockT, typename DurationT>
@@ -224,12 +262,12 @@ public:
             while (start.load() == end.load()) {
                 if (empty.template wait_until(guard, time) == std::cv_status::timeout) {
                     receiver_lock.unlock();
-                    return ReceiverSlotGuard{nullptr, *this};
+                    return ReceiverSlotGuard{};
                 }
             }
         }
 
-        return ReceiverSlotGuard{&inner[start.load()], *this};
+        return ReceiverSlotGuard{&inner[start.load()], this};
     }
 
     void claim() {

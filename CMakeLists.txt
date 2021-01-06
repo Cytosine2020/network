@@ -27,15 +27,15 @@ target_link_libraries(udp pthread)
 
 add_executable(tcp
         src/tcp.cpp src/wire/wire.cpp src/device/athernet.cpp
-        src/device/raw_socket.cpp src/server/tcp_server.cpp)
-target_link_libraries(tcp pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
+        src/device/unix_socket.cpp src/device/athernet_socket.cpp src/server/tcp_server.cpp)
+target_link_libraries(tcp pthread)
 
 add_executable(nat
-        src/nat.cpp src/wire/wire.cpp  src/wire/get_local_ip.cpp src/device/athernet.cpp
-        src/device/raw_socket.cpp src/device/unix_socket.cpp src/server/nat_server.cpp)
+        src/nat.cpp src/wire/wire.cpp src/wire/get_local_ip.cpp
+        src/device/athernet.cpp src/device/raw_socket.cpp src/device/unix_socket.cpp src/server/nat_server.cpp)
 target_link_libraries(nat pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
-foreach (executable tcp nat)
+foreach (executable nat)
     if (APPLE)
         add_custom_command(
                 TARGET ${executable}

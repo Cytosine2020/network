@@ -21,15 +21,14 @@ void *unix_socket_sender(void *args_) {
             continue;
         }
 
-        auto ip_header_size = ip_header->get_total_length();
-
-        if (ip_header_size >= ATHERNET_MTU) {
+        auto size = ip_header->get_total_length();
+        if (size >= ATHERNET_MTU) {
             cs120_warn("package truncated!");
             continue;
         }
 
-        buffer[0] = static_cast<uint8_t>(ip_header_size);
-        buffer[Range{1, ip_header_size + 1}].copy_from_slice((*slot)[Range{0, ip_header_size}]);
+        buffer[0] = static_cast<uint8_t>(size);
+        buffer[Range{1, size + 1}].copy_from_slice((*slot)[Range{0, size}]);
 
         ssize_t len = send(args->athernet, buffer.begin(), ATHERNET_MTU, 0);
         if (len == 0) { return nullptr; }
