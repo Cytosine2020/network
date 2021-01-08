@@ -1,25 +1,12 @@
 #include <cstdarg>
-#include <cstring>
 #include <fcntl.h>
+#include <memory>
+#include <regex>
 
-#include "ftp_client.h"
-
-using namespace cs120;
+#include "application/ftp_server.hpp"
 
 
-uint32_t get_host_ip(const char *host) {
-    struct hostent *server_ip = gethostbyname(host);
-    return reinterpret_cast<struct in_addr *>(server_ip->h_addr_list[0])->s_addr;
-}
-
-MutSlice<uint8_t> buffer_printf(MutSlice<uint8_t> buffer, const char *format, va_list args) {
-    int size = vsnprintf(reinterpret_cast<char *>(buffer.begin()), buffer.size(), format, args);
-
-    if (size < 0 || static_cast<size_t>(size) >= buffer.size()) { return MutSlice < uint8_t > {}; }
-
-    return buffer[Range{0, static_cast<size_t>(size)}];
-}
-
+namespace cs120 {
 FTPClient::FTPClient(std::shared_ptr<BaseSocket> &device, EndPoint local, EndPoint remote) :
         control{new TCPClient{device, 64, local, remote}}, data{nullptr} {
     Buffer<uint8_t, BUFF_LEN> buffer{};
@@ -32,8 +19,12 @@ bool FTPClient::send_printf(std::unique_ptr<TCPClient> &client, MutSlice<uint8_t
 
     va_list args;
     va_start(args, format);
-    auto msg = buffer_printf(buffer[Range{}], format, args);
+    int len = vsnprintf(reinterpret_cast<char *>(buffer.begin()), buffer.size(), format, args);
     va_end(args);
+
+    if (len < 0 || static_cast<size_t>(len) >= buffer.size()) { return false; }
+
+    auto msg = buffer[Range{0, static_cast<size_t>(len)}];
 
     if (msg.empty()) { return false; }
 
@@ -48,12 +39,10 @@ bool FTPClient::send_printf(std::unique_ptr<TCPClient> &client, MutSlice<uint8_t
 bool FTPClient::recv(std::unique_ptr<TCPClient> &client, MutSlice<uint8_t> buffer) {
     if (client == nullptr) { return false; }
 
-//    while (client->has_data()) {
     size_t size = client->recv(buffer[Range{}]);
     if (size == 0) { return false; }
 
     printf("%.*s", static_cast<int>(size), buffer.begin());
-//    }
 
     return true;
 }
@@ -106,14 +95,12 @@ bool FTPClient::pasv(std::shared_ptr<cs120::BaseSocket> &device, EndPoint local)
 
     EndPoint remote{remote_ip, remote_port};
 
-    printf("crate new tcp connection %s:%hu\n", inet_ntoa(in_addr{remote.ip_addr}), remote.port);
-
-    data = std::unique_ptr<TCPClient>{new TCPClient(device, 64, local, remote)};
+    data = std::make_unique<TCPClient>(device, 64, local, remote);
 
     return true;
 }
 
-bool FTPClient::list(const char *path = nullptr) {
+bool FTPClient::list(const char *path) {
     Buffer<uint8_t, BUFF_LEN> buffer{};
     if (path == nullptr) {
         if (!send_printf(control, buffer[Range{}], "LIST\r\n")) { return false; }
@@ -163,24 +150,4 @@ bool FTPClient::retr(const char *file_name) {
     return true;
 }
 
-int main(int argc, char **argv) {
-    if (argc != 3) { cs120_abort("accept 2 arguments"); }
-
-    std::shared_ptr<BaseSocket> device{new RawSocket{64}};
-
-    auto[local_ip, local_port] = parse_ip_address(argv[1]);
-
-    EndPoint remote{get_host_ip(argv[2]), 21};
-    EndPoint local{local_ip, local_port++};
-
-    FTPClient ftp_client(device, local, remote);
-
-    ftp_client.login("ftp", "");
-    ftp_client.pwd();
-    ftp_client.pasv(device, EndPoint{local_ip, local_port++}) &&
-    ftp_client.list();
-    ftp_client.cwd("ubuntu");
-    ftp_client.pasv(device, EndPoint{local_ip, local_port++}) &&
-    ftp_client.retr("ls-lR.gz");
-    ftp_client.quit();
 }
