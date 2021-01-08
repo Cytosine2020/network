@@ -87,6 +87,8 @@ void TCPSender::ack_update(uint32_t ack) {
 void TCPReceiver::accept(uint32_t seq, Slice<uint8_t> data) {
     uint32_t buffer_seq = seq - frame_receive;
     uint32_t buffer_offset = buffer_seq + buffer_end;
+    if (buffer_offset >= buffer.size()) { buffer_offset -= buffer.size(); }
+
     uint32_t window = get_window();
 
     if (closed) {
@@ -106,52 +108,39 @@ void TCPReceiver::accept(uint32_t seq, Slice<uint8_t> data) {
             buffer[Range{0, size - cut}].copy_from_slice(data[Range{cut, size}]);
         }
 
-        Fragment new_fragment{seq, size};
+        uint32_t new_offset = seq, new_size = size;
 
-        std::list<Fragment>::iterator a{fragments.end()};
-        std::list<Fragment>::iterator b{fragments.end()};
-        std::list<Fragment>::iterator ptr{fragments.begin()};
-
-        for (; ptr != fragments.end(); ++ptr) {
-            if (ptr->seq + ptr->length >= new_fragment.seq) {
-                a = ptr;
-                b = ptr;
-
-                if (ptr->seq < new_fragment.seq) {
-                    new_fragment.length += new_fragment.seq - ptr->seq;
-                    new_fragment.seq = ptr->seq;
-                }
-
-                break;
+        auto after = fragments.upper_bound(seq + size);
+        if (after != fragments.begin()) {
+            auto tmp = after;
+            --tmp;
+            if (tmp->first + tmp->second > seq + size) {
+                new_size = tmp->first + tmp->second - seq;
             }
         }
 
-        for (; ptr != fragments.end(); ++ptr) {
-            if (ptr->seq > new_fragment.seq + new_fragment.length) {
-                b = ptr;
-
-                auto last = ptr;
-                --last;
-
-                if (last->seq + last->length > new_fragment.seq + new_fragment.length) {
-                    new_fragment.length = last->seq + last->length - new_fragment.seq;
-                }
-
-                break;
+        auto before = fragments.upper_bound(seq);
+        if (before != fragments.begin()) {
+            auto tmp = before;
+            --tmp;
+            if (tmp->first + tmp->second >= seq) {
+                new_size += new_offset - tmp->first;
+                new_offset = tmp->first;
+                --before;
             }
         }
 
-        fragments.erase(a, b);
+        fragments.erase(before, after);
 
-        if (new_fragment.seq == frame_receive) {
-            frame_receive += new_fragment.length;
-            buffer_end = index_increase(buffer_end, new_fragment.length);
+        if (new_offset == frame_receive) {
+            frame_receive += new_size;
+            buffer_end = index_increase(buffer_end, new_size);
 
             if (frame_receive == close_seq) { ++frame_receive; }
 
             empty.notify_all();
         } else {
-            fragments.insert(b, new_fragment);
+            fragments.emplace(new_offset, new_size);
         }
     }
 }

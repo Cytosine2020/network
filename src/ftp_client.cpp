@@ -1,275 +1,186 @@
-//
-// Created by zhao on 2021/1/3.
-//
+#include <cstdarg>
+#include <cstring>
+#include <fcntl.h>
 
 #include "ftp_client.h"
-#include <string>
-#include <cstring>
-#include <libnet.h>
-#include <fstream>
-#include <utility>
 
 using namespace cs120;
 
-ftp_client::ftp_client(char *servername, std::shared_ptr<BaseSocket> sock1, std::shared_ptr<BaseSocket>sock2):data_port(0),connect(nullptr),data_connect(
-        nullptr){
-    lan = sock1;
-    data_lan=std::move(sock2);
-    Array<uint8_t> buffer{2048};
-//    struct sockaddr_in client_command, client_data;
-//    struct sockaddr client_arg;
-//    client_command.sin_family = AF_INET;
-//    client_command.sin_port = htons(1025);
-//    client_command.sin_addr.s_addr = INADDR_ANY;
-//    client_data.sin_family = AF_INET;
-//    client_data.sin_port = htons(1026);
-//    client_data.sin_addr.s_addr = INADDR_ANY;
-//
-//
-//    server.sin_family = AF_INET;
-//
-//    server.sin_port = htons(21);
-//
-//    client_socket = socket(AF_INET, SOCK_STREAM, 0);
-//
-//    if (bind(client_socket, (struct sockaddr *) (&client_command), sizeof(struct sockaddr_in)) == -1) {
-//        printf("bind error: %s(errno: %d)\n", strerror(errno), errno);
-//        exit(-1);
+
+uint32_t get_host_ip(const char *host) {
+    struct hostent *server_ip = gethostbyname(host);
+    return reinterpret_cast<struct in_addr *>(server_ip->h_addr_list[0])->s_addr;
+}
+
+MutSlice<uint8_t> buffer_printf(MutSlice<uint8_t> buffer, const char *format, va_list args) {
+    int size = vsnprintf(reinterpret_cast<char *>(buffer.begin()), buffer.size(), format, args);
+
+    if (size < 0 || static_cast<size_t>(size) >= buffer.size()) { return MutSlice < uint8_t > {}; }
+
+    return buffer[Range{0, static_cast<size_t>(size)}];
+}
+
+FTPClient::FTPClient(std::shared_ptr<BaseSocket> &device, EndPoint local, EndPoint remote) :
+        control{new TCPClient{device, 64, local, remote}}, data{nullptr} {
+    Buffer<uint8_t, BUFF_LEN> buffer{};
+    if (!recv(control, buffer[Range{}])) { cs120_abort("connection failed!"); }
+}
+
+bool FTPClient::send_printf(std::unique_ptr<TCPClient> &client, MutSlice<uint8_t> buffer,
+                            const char *format, ...) {
+    if (client == nullptr) { return false; }
+
+    va_list args;
+    va_start(args, format);
+    auto msg = buffer_printf(buffer[Range{}], format, args);
+    va_end(args);
+
+    if (msg.empty()) { return false; }
+
+    for (size_t offset = 0, size = 0; offset < msg.size(); offset += size) {
+        size = client->send(msg[Range{size}]);
+        if (size == 0) { return false; }
+    }
+
+    return true;
+}
+
+bool FTPClient::recv(std::unique_ptr<TCPClient> &client, MutSlice<uint8_t> buffer) {
+    if (client == nullptr) { return false; }
+
+//    while (client->has_data()) {
+    size_t size = client->recv(buffer[Range{}]);
+    if (size == 0) { return false; }
+
+    printf("%.*s", static_cast<int>(size), buffer.begin());
 //    }
-//    data_socket = socket(AF_INET, SOCK_STREAM, 0);
-//    if (bind(data_socket, (struct sockaddr *) (&client_data), sizeof(struct sockaddr_in)) == -1) {
-//        printf("bind error: %s(errno: %d)\n", strerror(errno), errno);
-//        exit(-1);
-//    }
-//    if (client_socket == -1) {
-//
-//        printf("Can't create socket");
-//
-//        exit(-1);
-//    }
 
-    struct hostent *server_ip = gethostbyname(servername);
+    return true;
+}
 
-    if (!server_ip) {
+bool FTPClient::login(const char *user_name, const char *password) {
+    return user(user_name) && pass(password);
+}
 
-        printf("Can't get server's IP");
+bool FTPClient::user(const char *user_name) {
+    Buffer<uint8_t, BUFF_LEN> buffer{};
+    return send_printf(control, buffer[Range{}], "USER %s\r\n", user_name) &&
+           recv(control, buffer[Range{}]);
+}
 
-        exit(-1);
+bool FTPClient::pass(const char *password) {
+    Buffer<uint8_t, BUFF_LEN> buffer{};
+    return send_printf(control, buffer[Range{}], "PASS %s\r\n", password) &&
+           recv(control, buffer[Range{}]);
+}
 
-    }
+bool FTPClient::pwd() {
+    Buffer<uint8_t, BUFF_LEN> buffer{};
+    return send_printf(control, buffer[Range{}], "PWD\r\n") &&
+           recv(control, buffer[Range{}]);
+}
 
-    uint32_t server_address = (*(struct in_addr *) server_ip->h_addr_list[0]).s_addr;
-    uint32_t local_address=get_local_ip();
-    struct EndPoint server{server_address,21};
-    struct EndPoint local{local_address,1025};
-    auto *server_connect=new TCPClient(sock1,64,local,server);
-    connect=server_connect;
+bool FTPClient::cwd(const char *pathname) {
+    Buffer<uint8_t, BUFF_LEN> buffer{};
+    return send_printf(control, buffer[Range{}], "CWD %s\r\n", pathname) &&
+           recv(control, buffer[Range{}]);
+}
 
-    size_t size=connect->recv(buffer[Range{}]);
-    if (size <= 0) {
-        printf("nothing recv");
+bool FTPClient::pasv(std::shared_ptr<cs120::BaseSocket> &device, EndPoint local) {
+    Buffer<uint8_t, BUFF_LEN> buffer{};
+    if (!(send_printf(control, buffer[Range{}], "PASV\r\n") &&
+          recv(control, buffer[Range{}]))) { return false; }
+
+    std::regex reg(R"(\((\d+),(\d+),(\d+),(\d+),(\d+),(\d+)\))");
+    std::cmatch match{};
+
+    uint16_t remote_port;
+    uint32_t remote_ip;
+    if (std::regex_search(reinterpret_cast<char *>(buffer.begin()), match, reg)) {
+        remote_port = (stoi(match.str(5)) << 8) + stoi(match.str(6));
+        remote_ip = (stoi(match.str(4)) << 24) + (stoi(match.str(3)) << 16) +
+                    (stoi(match.str(2)) << 8) + stoi(match.str(1));
     } else {
-        printf("%.*s",(int) size,buffer.begin());
+        cs120_abort("");
     }
+
+    EndPoint remote{remote_ip, remote_port};
+
+    printf("crate new tcp connection %s:%hu\n", inet_ntoa(in_addr{remote.ip_addr}), remote.port);
+
+    data = std::unique_ptr<TCPClient>{new TCPClient(device, 64, local, remote)};
+
+    return true;
 }
 
-int ftp_client::login(char *user_name, char *password) {
-    char send_buff[BUFF_LEN];
-    Array<uint8_t> read;
-    sprintf(send_buff, "USER %s\r\n", user_name);
-    {
-        Slice<uint8_t> send{reinterpret_cast<const unsigned char *>(send_buff), strlen(send_buff)};
-        connect->send(send);
-    }
-    {
-        Array<uint8_t> buffer{2048};
-        size_t size = connect->recv(buffer[Range{}]);
-        if (size <= 0) {
-            printf("nothing recv");
-        } else {
-            printf("%.*s",(int) size, buffer.begin());
-        }
-    }
-    memset(send_buff,0,BUFF_LEN);
-
-    sprintf(send_buff, "PASS %s\r\n", password);
-    {
-        Array<uint8_t> buffer{2048};
-        size_t size = connect->recv(buffer[Range{}]);
-        if (size <= 0) {
-            printf("nothing recv");
-        } else {
-            printf("%.*s",(int) size, buffer.begin());
-        }
-    }
-
-    return 1;
-}
-
-int ftp_client::PWD() {
-    char send_buff[BUFF_LEN];
-    sprintf(send_buff, "PWD\r\n");
-    {
-        Slice<uint8_t> send{reinterpret_cast<const unsigned char *>(send_buff), strlen(send_buff)};
-        connect->send(send);
-    }
-    {
-        Array<uint8_t> buffer{2048};
-        size_t size = connect->recv(buffer[Range{}]);
-        if (size <= 0) {
-            printf("nothing recv");
-        } else {
-            printf("%.*s",(int) size, buffer.begin());
-        }
-    }
-    return 1;
-}
-
-int ftp_client::CWD(char *pathname) {
-    char send_buff[BUFF_LEN];
-    sprintf(send_buff, "CWD %s\r\n", pathname);
-    {
-        Slice<uint8_t> send{reinterpret_cast<const unsigned char *>(send_buff), strlen(send_buff)};
-        connect->send(send);
-    }
-    {
-        Array<uint8_t> buffer{2048};
-        size_t size = connect->recv(buffer[Range{}]);
-        if (size <= 0) {
-            printf("nothing recv");
-        } else {
-            printf("%.*s", (int)size, buffer.begin());
-        }
-    }
-    return 1;
-}
-
-int ftp_client::PASV() {
-    char send_buff[BUFF_LEN];
-    char read_buff[BUFF_LEN];
-    {
-        Slice<uint8_t> send{reinterpret_cast<const unsigned char *>(send_buff), strlen(send_buff)};
-        connect->send(send);
-    }
-    {
-        Array<uint8_t> buffer{2048};
-        size_t size = connect->recv(buffer[Range{}]);
-        if (size <= 0) {
-            printf("nothing recv");
-        } else {
-            printf("%.*s",(int) size, buffer.begin());
-            for (size_t i = 0; i < buffer.size(); ++i) {
-                read_buff[i]=buffer[i];
-            }
-        }
-    }
-
-    std::regex reg(".*\\d+\\s.*,(\\d+),(\\d+)\\)\\.\\r\\n");
-    std::cmatch m;
-    bool flag1 = std::regex_match(read_buff, m, reg);
-    if (flag1) {
-        data_port = stoi(m.str(1)) * 256 + stoi(m.str(2));
+bool FTPClient::list(const char *path = nullptr) {
+    Buffer<uint8_t, BUFF_LEN> buffer{};
+    if (path == nullptr) {
+        if (!send_printf(control, buffer[Range{}], "LIST\r\n")) { return false; }
     } else {
-        for (size_t i = 0; i < strlen(read_buff); ++i) {
-            printf("%x\n", read_buff[i]);
-        }
-
-        return -1;
+        if (!send_printf(control, buffer[Range{}], "LIST %s\r\n", path)) { return false; }
     }
-    std::regex reg2(".*\\d+\\s.*\\((\\d+),(\\d+),(\\d+),(\\d+).*");
-    std::string str = std::regex_replace(read_buff, reg2, "$1.$2.$3.$4");
 
-    uint32_t server_address = inet_addr(str.c_str());
-    uint32_t local_address=get_local_ip();
-    struct EndPoint server{server_address,data_port};
-    struct EndPoint local{local_address,1026};
-    auto *server_connect=new TCPClient(data_lan,64,local,server);
-    data_connect=server_connect;
-    return 1;
+    if (!recv(control, buffer[Range{}])) { return false; }
+
+    while (!control->has_data()) {
+        if (!recv(data, buffer[Range{}])) { return false; }
+    }
+
+    if (!recv(control, buffer[Range{}])) { return false; }
+
+    return true;
 }
 
+bool FTPClient::quit() {
+    Buffer<uint8_t, BUFF_LEN> buffer{};
+    return send_printf(control, buffer[Range{}], "QUIT\r\n") &&
+           recv(control, buffer[Range{}]);
+}
 
-int ftp_client::LIST(char *listname) {
-    char send_buff[BUFF_LEN];
-    char read_buff[BUFF_LEN];
-    if (strlen(listname) == 0) {
-        sprintf(send_buff, "LIST\r\n");
-    } else {
-        sprintf(send_buff, "LIST %s\r\n", listname);
-    }
-    {
-        Slice<uint8_t> send{reinterpret_cast<const unsigned char *>(send_buff), strlen(send_buff)};
-        connect->send(send);
-    }
-    {
-        Array<uint8_t> buffer{2048};
-        size_t size = connect->recv(buffer[Range{}]);
-        if (size <= 0) {
-            printf("nothing recv");
-        } else {
-            printf("%.*s", (int)size, buffer.begin());
-            for (size_t i = 0; i < buffer.size(); ++i) {
-                read_buff[i]=buffer[i];
-            }
+bool FTPClient::retr(const char *file_name) {
+    Buffer<uint8_t, BUFF_LEN> buffer{};
+
+    if (!(send_printf(control, buffer[Range{}], "RETR %s\r\n", file_name) &&
+          recv(control, buffer[Range{}]))) { return false; }
+
+    int file = open(file_name, O_RDWR | O_CREAT | O_TRUNC | O_APPEND, 0644);
+    if (file < 0) { cs120_abort("open error"); }
+
+    while (!control->has_data()) {
+        size_t size = data->recv(buffer[Range{}]);
+        if (size == 0) { return false; }
+
+        if (static_cast<size_t>(write(file, buffer.begin(), size)) != size) {
+            cs120_abort("write error");
         }
     }
 
-    memset(read_buff, 0, BUFF_LEN);
+    close(file);
 
-    {
-        Array<uint8_t> buffer{2048};
-        size_t size = data_connect->recv(buffer[Range{}]);
-        if (size <= 0) {
-            printf("nothing recv");
-        } else {
-            printf("%.*s",(int) size, buffer.begin());
-            for (size_t i = 0; i < buffer.size(); ++i) {
-                read_buff[i]=buffer[i];
-            }
-        }
-    }
-    return 1;
+    if (!recv(control, buffer[Range{}])) { return false; }
+
+    return true;
 }
 
-int ftp_client::RETR(char *filename) {
-    char send_buff[BUFF_LEN];
-    sprintf(send_buff, "RETR %s\r\n", filename);
-    {
-        Slice<uint8_t> send{reinterpret_cast<const unsigned char *>(send_buff), strlen(send_buff)};
-        connect->send(send);
-    }
-    {
-        Array<uint8_t> buffer{2048};
-        size_t size = connect->recv(buffer[Range{}]);
-        if (size <= 0) {
-            printf("nothing recv");
-        } else if (size==1500){
-            std::fstream file("download_file",std::ios::out|std::ios::binary);
-            if(!file){
-                printf("can't open file");
-                return -1;
-            }
+int main(int argc, char **argv) {
+    if (argc != 3) { cs120_abort("accept 2 arguments"); }
 
-            while(size==1500){
-                file<<buffer.begin();
-                size = connect->recv(buffer[Range{}]);
-            }
-            for (size_t i = 0; i < size; ++i) {
-                file<<buffer.begin()[i];
-            }
-        }
-    }
-    return 1;
+    std::shared_ptr<BaseSocket> device{new RawSocket{64}};
+
+    auto[local_ip, local_port] = parse_ip_address(argv[1]);
+
+    EndPoint remote{get_host_ip(argv[2]), 21};
+    EndPoint local{local_ip, local_port++};
+
+    FTPClient ftp_client(device, local, remote);
+
+    ftp_client.login("ftp", "");
+    ftp_client.pwd();
+    ftp_client.pasv(device, EndPoint{local_ip, local_port++}) &&
+    ftp_client.list();
+    ftp_client.cwd("ubuntu");
+    ftp_client.pasv(device, EndPoint{local_ip, local_port++}) &&
+    ftp_client.retr("ls-lR.gz");
+    ftp_client.quit();
 }
-
-int main(){
-    std::shared_ptr<BaseSocket> sock1(new RawSocket{64});
-    std::shared_ptr<BaseSocket> sock2(new RawSocket{64});
-    ftp_client ftpClient("ftp.sjtu.edu.cn",sock1,sock2);
-    ftpClient.login("ftp","");
-    ftpClient.PWD();
-    ftpClient.PASV();
-    ftpClient.LIST("");
-
-}
-

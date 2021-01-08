@@ -1,44 +1,54 @@
-//
-// Created by zhao on 2021/1/3.
-//
-
 #ifndef FTP_FTP_CLIENT_H
 #define FTP_FTP_CLIENT_H
+
 #include <iostream>
 #include <cstdio>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <regex>
+#include <memory>
 #include "wire/tcp.hpp"
 #include "device/raw_socket.hpp"
 #include "wire/wire.hpp"
 #include "wire/get_local_ip.hpp"
 #include "server/tcp_server.hpp"
-#define BUFF_LEN 10*1024
+
+
 using namespace cs120;
-class ftp_client {
 
-    uint16_t data_port;
-    TCPClient *connect;
-    TCPClient *data_connect;
-    std::shared_ptr<cs120::BaseSocket> lan;
-    std::shared_ptr<cs120::BaseSocket> data_lan;
+constexpr size_t BUFF_LEN = 1 << 16;
+
+class FTPClient {
+private:
+    std::unique_ptr<TCPClient> control;
+    std::unique_ptr<TCPClient> data;
+
+    static bool send_printf(std::unique_ptr<TCPClient> &client, MutSlice<uint8_t> buffer,
+                            const char *format, ...);
+
+    static bool recv(std::unique_ptr<TCPClient> &client, MutSlice<uint8_t> buffer);
+
 public:
-    ftp_client(char* servername,std::shared_ptr<cs120::BaseSocket> sock1,std::shared_ptr<cs120::BaseSocket> sock2);
+    FTPClient(std::shared_ptr<BaseSocket> &device, EndPoint local, EndPoint remote);
 
-    int login(char* user_name, char* password);
+    bool login(const char *user_name, const char *password);
 
-    int PASV();
+    bool pasv(std::shared_ptr<cs120::BaseSocket> &device, EndPoint local);
 
-    int PWD();
+    bool user(const char *user_name);
 
-    int CWD(char* pathname);
+    bool pass(const char *password);
 
-    int LIST(char * listname);
+    bool pwd();
 
-    int RETR(char* filename);
+    bool cwd(const char *pathname);
 
+    bool list(const char *path);
+
+    bool retr(const char *file_name);
+
+    bool quit();
 };
 
 

@@ -288,6 +288,7 @@ public:
     }
 };
 
+
 template<typename T, size_t len>
 class Buffer : public MutSliceTrait<Buffer<T, len>, T> {
 private:

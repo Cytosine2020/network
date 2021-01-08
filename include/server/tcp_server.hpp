@@ -144,16 +144,11 @@ class TCPReceiver {
 public:
     static constexpr size_t BUFFER_SIZE = 1 << 16;
 
-    struct Fragment {
-        uint32_t seq;
-        uint32_t length;
-    };
-
     EndPoint local, remote;
     uint16_t mss;
     uint8_t scale;
     uint32_t ack_receive, frame_receive;
-    std::list<Fragment> fragments;
+    std::map<uint32_t, uint32_t> fragments;
     Array<uint8_t> buffer;
     size_t buffer_start, buffer_end;
     std::mutex lock, receiver_lock;
@@ -167,7 +162,7 @@ public:
 
     size_t get_window() const {
         if (buffer_end >= buffer_start) {
-            return buffer.size() - 1 + buffer_start - buffer_end;
+            return buffer.size() + buffer_start - buffer_end - 1;
         } else {
             return buffer_start - buffer_end - 1;
         }
@@ -192,6 +187,8 @@ public:
     void close(uint32_t seq);
 
     ssize_t recv(MutSlice<uint8_t> data);
+
+    bool has_data() { return buffer_start != buffer_end; }
 
     ~TCPReceiver() = default;
 };
@@ -256,6 +253,10 @@ private:
     MPSCQueue<TCPClient::Request>::Sender request_sender;
 
 public:
+    TCPClient() :
+            send_thread{}, recv_thread{}, device{},
+            sender{nullptr}, receiver{nullptr}, request_sender{} {};
+
     TCPClient(std::shared_ptr<BaseSocket> &device, size_t size, EndPoint local, EndPoint remote);
 
     TCPClient(TCPClient &&other) noexcept = default;
@@ -275,9 +276,11 @@ public:
 
     ssize_t recv(MutSlice<uint8_t> data) { return receiver->recv(data); }
 
+    bool has_data() { return receiver->has_data(); }
+
     ~TCPClient() {
         {
-            auto send = request_sender.send();
+            auto send = request_sender.try_send();
             if (!send.none()) {
                 *send = Request{Request::Close, {.close = {
                         receiver->ack_receive, receiver->frame_receive
@@ -285,8 +288,8 @@ public:
             }
         }
 
-        pthread_join(send_thread, nullptr);
-        pthread_join(recv_thread, nullptr);
+//        pthread_join(send_thread, nullptr);
+//        pthread_join(recv_thread, nullptr);
     }
 };
 }

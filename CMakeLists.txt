@@ -29,7 +29,7 @@ target_link_libraries(udp pthread)
 
 add_executable(tcp
         src/tcp.cpp src/wire/wire.cpp src/device/athernet.cpp
-        src/device/unix_socket.cpp src/device/athernet_socket.cpp src/server/tcp_server.cpp src/ftp_client.cpp)
+        src/device/unix_socket.cpp src/device/athernet_socket.cpp src/server/tcp_server.cpp)
 target_link_libraries(tcp pthread)
 
 
