@@ -24,6 +24,7 @@ void *raw_socket_sender(void *args_) {
 
     for (;;) {
         auto buffer = args->queue.recv();
+        if (buffer.none()) { break; }
 
         auto[ip_header, ip_option, ip_data] = ipv4_split((*buffer)[Range{}]);
         if (ip_header == nullptr) {
@@ -50,6 +51,12 @@ void *raw_socket_sender(void *args_) {
 
         libnet_clear_packet(args->context);
     }
+
+    libnet_destroy(args->context);
+
+    delete args;
+
+    return nullptr;
 }
 
 
@@ -76,6 +83,7 @@ void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *
     auto eth_data = eth_datagram[Range(sizeof(ETHHeader))];
 
     args->demultiplexer.send(eth_data);
+    if (args->demultiplexer.is_close()) { pcap_breakloop(args->pcap_handle); }
 }
 
 void *raw_socket_receiver(void *args_) {
@@ -84,10 +92,16 @@ void *raw_socket_receiver(void *args_) {
     auto count = std::numeric_limits<int32_t>::max();
 
     for (;;) {
-        if (pcap_loop(args->pcap_handle, count, pcap_callback, pcap_args) == PCAP_ERROR) {
-            cs120_abort(pcap_geterr(args->pcap_handle));
-        }
+        auto ret = pcap_loop(args->pcap_handle, count, pcap_callback, pcap_args);
+        if (ret == PCAP_ERROR_BREAK) { break; }
+        if (ret == PCAP_ERROR) { cs120_abort(pcap_geterr(args->pcap_handle)); }
     }
+
+    pcap_close(args->pcap_handle);
+
+    delete args;
+
+    return nullptr;
 }
 }
 

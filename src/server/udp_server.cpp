@@ -42,6 +42,7 @@ size_t UDPServer::send(Slice<uint8_t> data) {
 
     while (!data.empty()) {
         auto buffer = send_queue.send();
+        if (buffer.none()) { return 0; }
 
         size_t size = std::min(maximum, data.size());
 
@@ -74,8 +75,9 @@ size_t UDPServer::recv(MutSlice<uint8_t> data) {
         }
     }
 
-    while (!data.empty()) {
+    for (;;) {
         auto buffer = recv_queue->recv();
+        if (buffer.none()) { return 0; }
 
         auto *ip_header = buffer->buffer_cast<IPV4Header>();
         if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
@@ -103,7 +105,5 @@ size_t UDPServer::recv(MutSlice<uint8_t> data) {
             return udp_data.size();
         }
     }
-
-    return 0;
 }
 }

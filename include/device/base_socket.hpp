@@ -60,7 +60,8 @@ public:
 
         ~ReceiverGuard() {
             if (filter != nullptr) {
-                *sender.send() = Request{Request::Remove, std::move(filter)};
+                auto buffer = sender.send();
+                if (!buffer.none()) { *buffer = Request{Request::Remove, std::move(filter)}; }
             }
         };
     };
@@ -105,6 +106,8 @@ public:
     Demultiplexer(Demultiplexer &&other) noexcept = default;
 
     Demultiplexer &operator=(Demultiplexer &&other) noexcept = default;
+
+    bool is_close() const { return sender.is_closed() && receivers.empty(); }
 
     void send(Slice<uint8_t> datagram) {
         for (;;) {

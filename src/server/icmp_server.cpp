@@ -17,6 +17,8 @@ bool ICMPPing::ping(uint16_t seq) {
 
     {
         auto buffer = send_queue.send();
+        if (buffer.none()) { return false; }
+
         ICMPHeader::generate((*buffer)[Range{}], 0, seq + 1, src_ip, dest_ip, 64,
                              ICMPType::EchoRequest, 0, sizeof(ICMPEcho))
                 ->copy_from_slice(data.into_slice());
@@ -41,7 +43,6 @@ bool ICMPPing::ping(uint16_t seq) {
         }
 
         auto *echo_data = icmp_data.buffer_cast<ICMPEcho>();
-
         if (echo_data->get_sequence() != seq) { continue; }
 
         break;
@@ -53,6 +54,7 @@ bool ICMPPing::ping(uint16_t seq) {
 void ICMPServer::icmp_receiver() {
     for (;;) {
         auto buffer = recv_queue->recv();
+        if (buffer.none()) { return; }
 
         auto[ip_header, ip_option, ip_data] = ipv4_split((*buffer)[Range{}]);
         if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
@@ -68,6 +70,8 @@ void ICMPServer::icmp_receiver() {
 
         auto send = send_queue.try_send();
         if (send.none()) {
+            if (send.is_close()) { return; }
+
             cs120_warn("echo reply loss!");
         } else {
             icmp_header->set_type(ICMPType::EchoReply);

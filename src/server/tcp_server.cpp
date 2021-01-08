@@ -207,30 +207,27 @@ void *TCPClient::tcp_sender(void *args_) {
     using TimePoint = std::chrono::time_point<std::chrono::system_clock>;
 
     auto *args = reinterpret_cast<TCPSendArgs *>(args_);
-    auto *sender = args->connection;
-    uint16_t mss = args->mss;
+    auto sender = args->connection;
 
     std::priority_queue<TimePoint, std::vector<TimePoint>, std::greater<>> timeout{};
 
     for (;;) {
-        // todo: merge requests
+        if (args->send_queue.is_closed()) { break; }
+
         MPSCQueue<Request>::ReceiverSlotGuard recv =
-                timeout.empty() ? args->request_receiver.recv() :
-                args->request_receiver.recv_deadline(timeout.top());
+                timeout.empty() ? args->request_receiver.recv().unwrap() :
+                args->request_receiver.recv_deadline(timeout.top()).unwrap();
 
         auto current = std::chrono::system_clock::now();
 
         // this is timeout
         if (recv.none()) {
-            if (!sender->finished()) {
-                timeout.pop();
+            if (sender->finished()) { break; }
 
-                uint32_t window = sender->get_size(); // todo: window size
+            sender->generate_data(args->send_queue);
 
-                sender->generate_data(args->send_queue, mss, window);
-
-                timeout.push(current + 300ms); // todo
-            }
+            timeout.pop();
+            timeout.push(current + 300ms);
 
             continue;
         }
@@ -239,26 +236,26 @@ void *TCPClient::tcp_sender(void *args_) {
             case Request::FrameReceive: {
                 auto &request = recv->inner.frame_receive;
 
-                sender->frame_receive = request.frame_receive;
                 sender->ack_update(request.ack_receive);
+                sender->remote_window = sender->remote_window;
+                sender->frame_receive = request.frame_receive;
+                sender->local_window = request.local_window;
 
                 sender->generate_ack(args->send_queue);
             }
                 break;
             case Request::AckReceive: {
                 auto &request = recv->inner.ack_receive;
+
                 sender->ack_update(request.ack_receive);
+                sender->remote_window = sender->remote_window;
             }
                 break;
             case Request::FrameSend: {
                 if (timeout.empty()) {
-                    uint32_t window = sender->get_size();
-                    // todo: window size
-                    // todo: nagle
+                    sender->generate_data(args->send_queue);
 
-                    sender->generate_data(args->send_queue, mss, window);
-
-                    timeout.push(current + 300ms); // todo
+                    timeout.push(current + 300ms);
                 }
             }
                 break;
@@ -270,7 +267,7 @@ void *TCPClient::tcp_sender(void *args_) {
                     if (timeout.empty()) {
                         sender->generate_fin(args->send_queue);
 
-                        timeout.push(current + 300ms); // todo
+                        timeout.push(current + 300ms);
                     }
                 }
             }
@@ -279,11 +276,17 @@ void *TCPClient::tcp_sender(void *args_) {
                 cs120_abort("unknown type!");
         }
     }
+
+    delete args;
+
+    return nullptr;
 }
 
 void *TCPClient::tcp_receiver(void *args_) {
+    using namespace std::literals;
+
     auto *args = reinterpret_cast<TCPRecvArgs *>(args_);
-    auto *receiver = args->connection;
+    auto receiver = args->connection;
 
     for (;;) {
         auto buffer = args->recv_queue->recv();
@@ -327,18 +330,28 @@ void *TCPClient::tcp_receiver(void *args_) {
             receiver->accept(tcp_header->get_sequence(), tcp_data);
         }
 
+        uint32_t remote_window = tcp_header->get_window() << receiver->scale;
+        uint32_t local_window = receiver->get_window();
+
         if (!tcp_data.empty() || tcp_header->get_fin()) {
-            *args->request_sender.send() = Request{
-                    Request::FrameReceive,
-                    {.frame_receive = {receiver->ack_receive, receiver->frame_receive}}
-            };
+            auto send = args->request_sender.send();
+            if (send.none()) { break; }
+            *send = Request{Request::FrameReceive, {.frame_receive = {
+                    receiver->ack_receive, remote_window,
+                    receiver->frame_receive, local_window,
+            }}};
         } else if (tcp_header->get_ack()) {
-            *args->request_sender.send() = Request{
-                    Request::AckReceive,
-                    {.ack_receive = {receiver->ack_receive}}
-            };
+            auto send = args->request_sender.send();
+            if (send.none()) { break; }
+            *send = Request{Request::AckReceive, {.ack_receive = {
+                    receiver->ack_receive, remote_window,
+            }}};
         }
     }
+
+    delete args;
+
+    return nullptr;
 }
 
 
@@ -369,16 +382,26 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
     uint16_t local_mss = TCPHeader::max_payload(device->get_mtu());
     uint16_t remote_mss = 0;
 
-    uint32_t local_seq = 0, remote_seq = 0; // todo
+    uint8_t local_scale = 0;
+    uint8_t remote_scale = 0;
 
-    SyncOption option{local_mss};
+    uint32_t local_seq = 0;
+    uint32_t remote_seq = 0; // todo
+
+    SyncOption option{local_mss, local_scale};
+
+    uint32_t local_window = TCPSender::BUFFER_SIZE - 1;
+    uint32_t remote_window = 0;
+
+    uint16_t window = std::min<size_t>(local_window >> local_scale,
+                                       std::numeric_limits<uint16_t>::max());
 
     {
         auto buffer = send.send();
         TCPHeader::generate((*buffer)[Range{}], 0, IDENTIFIER, local.ip_addr, remote.ip_addr, 64,
                             local.port, remote.port, local_seq, 0,
                             false, false, false, false, false, false, false, true, false,
-                            WINDOW, option.into_slice(), 0);
+                            window, option.into_slice(), 0);
     }
 
     bool sync = false, ack = false;
@@ -386,14 +409,14 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
     for (;;) {
         using namespace std::literals;
 
-        auto buffer = recv->recv_timeout(300ms);
+        auto buffer = recv->recv_timeout(300ms).unwrap();
         if (buffer.none()) {
             auto send_buffer = send.send();
             TCPHeader::generate((*send_buffer)[Range{}], 0, IDENTIFIER,
                                 local.ip_addr, remote.ip_addr, 64,
                                 local.port, remote.port, local_seq, 0,
                                 false, false, false, false, false, false, false, true, false,
-                                WINDOW, option.into_slice(), 0);
+                                window, option.into_slice(), 0);
 
             continue;
         }
@@ -409,6 +432,8 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
             cs120_warn("invalid package!");
             continue;
         }
+
+        remote_window = tcp_header->get_window() << remote_scale;
 
         if (!tcp_header->check_flags()) {
             // todo
@@ -448,7 +473,7 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
                                 local.ip_addr, remote.ip_addr, 64,
                                 local.port, remote.port, local_seq, remote_seq,
                                 false, false, false, false, true, false, false, false, false,
-                                WINDOW, Slice<uint8_t>{}, 0);
+                                local_window, Slice<uint8_t>{}, 0);
         }
 
         TCPOptionIter iter{tcp_option};
@@ -461,13 +486,12 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
                     break;
                 case TCPOption::NoOperation:
                     break;
-                case TCPOption::MaximumSegmentSize: {
+                case TCPOption::MaximumSegmentSize:
                     remote_mss = (static_cast<uint16_t>(data[0]) << 8) |
                                  (static_cast<uint16_t>(data[1]) << 0);
-
-                }
                     break;
                 case TCPOption::WindowScaleFactor:
+                    remote_scale = data[0];
                     break;
                 case TCPOption::SACKPermitted:
                     break;
@@ -487,15 +511,18 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
         if (ack && sync) { break; }
     }
 
-    sender = new TCPSender{local, remote, local_seq, remote_seq};
-    receiver = new TCPReceiver{local, remote, local_seq, remote_seq};
+    sender = std::shared_ptr<TCPSender>(new TCPSender{
+            local, remote, local_seq, remote_seq, local_mss, local_scale, remote_window
+    });
+    receiver = std::shared_ptr<TCPReceiver>(new TCPReceiver{
+            local, remote, local_seq, remote_seq, remote_mss, remote_scale
+    });
 
     auto[request_send, request_recv] = MPSCQueue<Request>::channel(size);
 
     request_sender = request_send;
 
     auto *send_args = new TCPSendArgs{
-            .mss = local_mss,
             .send_queue = std::move(send),
             .request_receiver = std::move(request_recv),
             .connection = sender,
@@ -503,7 +530,7 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
 
     auto *recv_args = new TCPRecvArgs{
             .recv_queue = std::move(recv),
-            .request_sender = request_send,
+            .request_sender = std::move(request_send),
             .connection = receiver,
     };
 

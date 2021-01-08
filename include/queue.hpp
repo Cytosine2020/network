@@ -17,15 +17,23 @@ namespace cs120 {
 template<typename T>
 class MPSCQueue {
 public:
+    enum class Error {
+        None,
+        Empty,
+        Closed,
+    };
+
     class SenderSlotGuard {
     private:
         T *inner;
         MPSCQueue<T> *queue;
+        Error error;
 
     public:
-        SenderSlotGuard() noexcept: inner{nullptr}, queue{nullptr} {}
+        explicit SenderSlotGuard(Error error): inner{nullptr}, queue{nullptr}, error{error} {}
 
-        SenderSlotGuard(T *inner, MPSCQueue<T> *queue) : inner{inner}, queue{queue} {}
+        SenderSlotGuard(T *inner, MPSCQueue<T> *queue) :
+                inner{inner}, queue{queue}, error{Error::None} {}
 
         SenderSlotGuard(SenderSlotGuard &&other) noexcept {
             if (this != &other) {
@@ -38,7 +46,7 @@ public:
 
         SenderSlotGuard &operator=(SenderSlotGuard &&other) noexcept {
             if (this != &other) {
-                if (!none()) { queue->commit(); }
+                if (!this->none()) { queue->commit(); }
                 this->inner = other.inner;
                 this->queue = other.queue;
                 other.inner = nullptr;
@@ -49,6 +57,18 @@ public:
         }
 
         bool none() const { return inner == nullptr; }
+
+        Error get_error() const { return error; }
+
+        bool is_empty() const { return error == Error::Empty; }
+
+        bool is_close() const { return error == Error::Closed; }
+
+        SenderSlotGuard unwrap() {
+            if (is_close()) { cs120_abort("channel closed unexpectedly!"); }
+
+            return std::move(*this);
+        }
 
         T &operator*() { return *inner; }
 
@@ -62,11 +82,13 @@ public:
     private:
         T *inner;
         MPSCQueue<T> *queue;
+        Error error;
 
     public:
-        ReceiverSlotGuard() noexcept: inner{nullptr}, queue{nullptr} {}
+        explicit ReceiverSlotGuard(Error error): inner{nullptr}, queue{nullptr}, error{error} {}
 
-        ReceiverSlotGuard(T *inner, MPSCQueue<T> *queue) : inner{inner}, queue{queue} {}
+        ReceiverSlotGuard(T *inner, MPSCQueue<T> *queue) :
+                inner{inner}, queue{queue}, error{Error::None} {}
 
         ReceiverSlotGuard(ReceiverSlotGuard &&other) noexcept {
             if (this != &other) {
@@ -79,7 +101,7 @@ public:
 
         ReceiverSlotGuard &operator=(ReceiverSlotGuard &&other) noexcept {
             if (this != &other) {
-                if (!none()) { queue->claim(); }
+                if (!this->none()) { queue->claim(); }
                 this->inner = other.inner;
                 this->queue = other.queue;
                 other.inner = nullptr;
@@ -90,6 +112,18 @@ public:
         }
 
         bool none() const { return inner == nullptr; }
+
+        Error get_error() const { return error; }
+
+        bool is_empty() const { return error == Error::Empty; }
+
+        bool is_close() const { return error == Error::Closed; }
+
+        ReceiverSlotGuard unwrap() {
+            if (is_close()) { cs120_abort("channel closed unexpectedly!"); }
+
+            return std::move(*this);
+        }
 
         T &operator*() { return *inner; }
 
@@ -108,19 +142,27 @@ public:
 
         explicit Sender(std::shared_ptr<MPSCQueue<T>> queue) : queue{queue} {}
 
-        Sender(const Sender &other) = default;
+        Sender(const Sender &other) : queue{other.queue} {
+            if (this != &other) { queue->add_sender(); }
+        }
 
-        Sender &operator=(const Sender &other) = default;
+        Sender &operator=(const Sender &other) {
+            this->queue = other.queue;
+            if (this != &other) { queue->add_sender(); }
+            return *this;
+        }
 
         Sender(Sender &&other) noexcept = default;
 
         Sender &operator=(Sender &&other) noexcept = default;
 
+        size_t is_closed() const { return queue->receiver_count() == 0; }
+
         SenderSlotGuard try_send() { return queue->try_send(); }
 
         SenderSlotGuard send() { return queue->send(); }
 
-        ~Sender() = default;
+        ~Sender() { if (queue != nullptr) { queue->remove_sender(); }}
     };
 
 
@@ -137,6 +179,8 @@ public:
 
         Receiver &operator=(Receiver &&other) noexcept = default;
 
+        size_t is_closed() const { return queue->sender_count() == 0; }
+
         ReceiverSlotGuard try_recv() { return queue->try_recv(); }
 
         ReceiverSlotGuard recv() { return queue->recv(); }
@@ -151,12 +195,13 @@ public:
             return queue->recv_deadline(time);
         }
 
-        ~Receiver() = default;
+        ~Receiver() { if (queue != nullptr) { queue->remove_receiver(); }}
     };
 
 private:
     std::mutex lock, sender_lock, receiver_lock;
     std::condition_variable empty, full;
+    std::atomic<size_t> sender, receiver;
     Array<T> inner;
     size_t size;
     std::atomic<size_t> start, end;
@@ -164,7 +209,8 @@ private:
     size_t index_increase(size_t index) const { return index + 1 >= size ? 0 : index + 1; }
 
     explicit MPSCQueue(size_t size) :
-            lock{}, empty{}, full{}, inner{size}, size{size}, start{0}, end{0} {}
+            lock{}, sender_lock{}, receiver_lock{}, empty{}, full{},
+            sender{1}, receiver{1}, inner{size}, size{size}, start{0}, end{0} {}
 
 public:
     static std::pair<Sender, Receiver> channel(size_t size) {
@@ -176,18 +222,42 @@ public:
 
     MPSCQueue &operator=(const MPSCQueue &other) = delete;
 
+    void add_sender() { sender.fetch_add(1); }
+
+    void remove_sender() {
+        if (sender.fetch_sub(1) == 0) {
+            std::unique_lock<std::mutex> guard{lock};
+            empty.notify_all();
+        }
+    }
+
+    void remove_receiver() {
+        if (receiver.fetch_sub(1) == 0) {
+            std::unique_lock<std::mutex> guard{lock};
+            full.notify_all();
+        }
+    }
+
+    size_t sender_count() const { return sender.load(); }
+
+    size_t receiver_count() const { return receiver.load(); }
+
     SenderSlotGuard try_send() {
+        if (receiver.load() == 0) { return SenderSlotGuard{Error::Closed}; }
+
         sender_lock.lock();
 
         if (index_increase(end) == start.load()) {
             sender_lock.unlock();
-            return SenderSlotGuard{};
+            return SenderSlotGuard{Error::Empty};
         } else {
             return SenderSlotGuard{&inner[end.load()], this};
         }
     }
 
     SenderSlotGuard send() {
+        if (receiver.load() == 0) { return SenderSlotGuard{Error::Closed}; }
+
         sender_lock.lock();
 
         if (index_increase(end.load()) == start.load()) {
@@ -195,6 +265,11 @@ public:
 
             while (index_increase(end.load()) == start.load()) {
                 full.wait(guard);
+
+                if (receiver.load() == 0) {
+                    sender_lock.unlock();
+                    return SenderSlotGuard{Error::Closed};
+                }
             }
         }
 
@@ -214,7 +289,8 @@ public:
 
         if (start.load() == end.load()) {
             receiver_lock.unlock();
-            return ReceiverSlotGuard{};
+            if (sender.load() == 0) { return ReceiverSlotGuard{Error::Closed}; }
+            else { return ReceiverSlotGuard{Error::Empty}; }
         } else {
             return ReceiverSlotGuard{&inner[start.load()], this};
         }
@@ -224,9 +300,19 @@ public:
         receiver_lock.lock();
 
         if (start.load() == end.load()) {
+            if (sender.load() == 0) {
+                receiver_lock.unlock();
+                return ReceiverSlotGuard{Error::Closed};
+            }
+
             std::unique_lock<std::mutex> guard{lock};
 
             while (start.load() == end.load()) {
+                if (sender.load() == 0) {
+                    receiver_lock.unlock();
+                    return ReceiverSlotGuard{Error::Closed};
+                }
+
                 empty.wait(guard);
             }
         }
@@ -239,12 +325,22 @@ public:
         receiver_lock.lock();
 
         if (start.load() == end.load()) {
+            if (sender.load() == 0) {
+                receiver_lock.unlock();
+                return ReceiverSlotGuard{Error::Closed};
+            }
+
             std::unique_lock<std::mutex> guard{lock};
 
             while (start.load() == end.load()) {
+                if (sender.load() == 0) {
+                    receiver_lock.unlock();
+                    return ReceiverSlotGuard{Error::Closed};
+                }
+
                 if (empty.template wait_for(guard, period) == std::cv_status::timeout) {
                     receiver_lock.unlock();
-                    return ReceiverSlotGuard{};
+                    return ReceiverSlotGuard{Error::Empty};
                 }
             }
         }
@@ -257,12 +353,22 @@ public:
         receiver_lock.lock();
 
         if (start.load() == end.load()) {
+            if (sender.load() == 0) {
+                receiver_lock.unlock();
+                return ReceiverSlotGuard{Error::Closed};
+            }
+
             std::unique_lock<std::mutex> guard{lock};
 
             while (start.load() == end.load()) {
+                if (sender.load() == 0) {
+                    receiver_lock.unlock();
+                    return ReceiverSlotGuard{Error::Closed};
+                }
+
                 if (empty.template wait_until(guard, time) == std::cv_status::timeout) {
                     receiver_lock.unlock();
-                    return ReceiverSlotGuard{};
+                    return ReceiverSlotGuard{Error::Empty};
                 }
             }
         }

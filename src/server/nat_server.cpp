@@ -63,6 +63,7 @@ void NatServer::nat_lan_to_wan() {
 
     for (;;) {
         auto receive = lan_receiver->recv();
+        if (receive.is_close()) { return; }
 
         auto[ip_header, ip_option, ip_data] = ipv4_split((*receive)[Range{}]);
         if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
@@ -209,6 +210,8 @@ void NatServer::nat_lan_to_wan() {
         }
 
         if (wan_sender.send((*receive)[Range{0, ip_data_size}]) < ip_data_size) {
+            if (wan_sender->is_closed()) { return; }
+
             cs120_warn("package loss!");
         }
     }
@@ -219,6 +222,7 @@ void NatServer::nat_wan_to_lan() {
 
     for (;;) {
         auto receive = wan_receiver->recv();
+        if (receive.is_close()) { return; }
 
         auto[ip_header, ip_option, ip_data] = ipv4_split((*receive)[Range{}]);
         if (ip_header == nullptr || complement_checksum(ip_header->into_slice()) != 0) {
@@ -350,6 +354,8 @@ void NatServer::nat_wan_to_lan() {
         }
 
         if (lan_sender.send((*receive)[Range{0, ip_data_size}]) < ip_data_size) {
+            if (lan_sender->is_closed()) { return; }
+
             cs120_warn("package loss!");
         }
     }

@@ -12,15 +12,19 @@
 
 namespace cs120 {
 // todo
-constexpr uint16_t WINDOW = 65535;
 constexpr uint16_t IDENTIFIER = 0;
 
 class TCPSender {
 public:
+    static constexpr size_t BUFFER_SIZE = 1 << 16;
+
     EndPoint local, remote;
+    uint16_t mss;
+    uint8_t scale;
     uint32_t frame_send, ack_receive, frame_receive;
+    uint32_t local_window, remote_window;
     Array<uint8_t> buffer;
-    size_t buffer_start, buffer_end; // buffer end is frame received todo: memory order
+    size_t buffer_start, buffer_end;
     std::mutex lock, sender_lock;
     std::condition_variable full;
     uint32_t close_seq;
@@ -30,7 +34,7 @@ public:
         return index + diff >= buffer.size() ? index + diff - buffer.size() : index + diff;
     }
 
-    size_t get_size() const {
+    uint32_t get_buffer_size() const {
         if (buffer_end >= buffer_start) {
             return buffer_end - buffer_start;
         } else {
@@ -38,9 +42,17 @@ public:
         }
     }
 
-    TCPSender(EndPoint local, EndPoint remote, uint32_t local_seq, uint32_t remote_seq) :
-            local{local}, remote{remote}, frame_send{local_seq}, ack_receive{local_seq},
-            frame_receive{remote_seq}, buffer{4096}, buffer_start{}, buffer_end{}, closed{false} {}
+    uint32_t get_size() const {
+        if (remote_window == 0) { return 1; }
+        return std::min(get_buffer_size(), remote_window);
+    }
+
+    TCPSender(EndPoint local, EndPoint remote, uint32_t local_seq, uint32_t remote_seq,
+              uint16_t mss, uint8_t scale, uint32_t remote_window) :
+            local{local}, remote{remote}, mss{mss}, scale{scale},
+            frame_send{local_seq}, ack_receive{local_seq}, frame_receive{remote_seq},
+            local_window{BUFFER_SIZE - 1}, remote_window{remote_window},
+            buffer{BUFFER_SIZE}, buffer_start{}, buffer_end{}, close_seq{0}, closed{false} {}
 
     TCPSender(TCPSender &&other) noexcept = delete;
 
@@ -56,8 +68,14 @@ public:
 
     void ack_update(uint32_t ack);
 
+    uint16_t get_tcp_window() const {
+        uint32_t window = local_window >> scale;
+        uint32_t max = std::numeric_limits<uint16_t>::max();
+        return std::min(window, max);
+    }
+
     void generate_ack(MPSCQueue<PacketBuffer>::Sender &sender) const {
-        auto send = sender.try_send();
+        auto send = sender.try_send().unwrap();
         if (send.none()) {
             cs120_warn("package lost!");
             return;
@@ -67,16 +85,17 @@ public:
                             local.ip_addr, remote.ip_addr, 64, local.port, remote.port,
                             frame_send, frame_receive,
                             false, false, false, false, true, false, false, false, false,
-                            WINDOW, Slice<uint8_t>{}, 0);
+                            get_tcp_window(), Slice<uint8_t>{}, 0);
     }
 
-    void generate_data(MPSCQueue<PacketBuffer>::Sender &sender, uint32_t mss, uint32_t window) {
+    void generate_data(MPSCQueue<PacketBuffer>::Sender &sender) {
+        uint32_t window = get_size();
         uint32_t size;
 
         for (uint32_t offset = 0; offset < window; offset += size) {
-            size = std::min(mss, window - offset);
+            size = std::min<size_t>(mss, window - offset);
 
-            auto send = sender.try_send();
+            auto send = sender.try_send().unwrap();
             if (send.none()) {
                 frame_send = std::max(frame_send, ack_receive + offset);
 
@@ -90,7 +109,7 @@ public:
                                                   ack_receive + offset, frame_receive,
                                                   false, false, false, false, true,
                                                   offset + size == window, false, false, false,
-                                                  WINDOW, Slice<uint8_t>{}, size);
+                                                  get_tcp_window(), Slice<uint8_t>{}, size);
 
             take(offset, *tcp_buffer);
         }
@@ -102,7 +121,7 @@ public:
 
     void generate_fin(MPSCQueue<PacketBuffer>::Sender &sender) {
         if (closed) {
-            auto send = sender.try_send();
+            auto send = sender.try_send().unwrap();
             if (send.none()) {
                 cs120_warn("package lost!");
                 return;
@@ -112,7 +131,7 @@ public:
                                 local.ip_addr, remote.ip_addr, 64, local.port, remote.port,
                                 close_seq, frame_receive,
                                 false, false, false, false, true, false, false, false, true,
-                                WINDOW, Slice<uint8_t>{}, 0);
+                                get_tcp_window(), Slice<uint8_t>{}, 0);
 
             frame_send = close_seq + 1;
         }
@@ -123,16 +142,20 @@ public:
 
 class TCPReceiver {
 public:
+    static constexpr size_t BUFFER_SIZE = 1 << 16;
+
     struct Fragment {
         uint32_t seq;
         uint32_t length;
     };
 
     EndPoint local, remote;
+    uint16_t mss;
+    uint8_t scale;
     uint32_t ack_receive, frame_receive;
     std::list<Fragment> fragments;
     Array<uint8_t> buffer;
-    size_t buffer_start, buffer_end; // buffer end is frame received todo: memory order
+    size_t buffer_start, buffer_end;
     std::mutex lock, receiver_lock;
     std::condition_variable empty;
     uint32_t close_seq;
@@ -151,9 +174,11 @@ public:
     }
 
 public:
-    TCPReceiver(EndPoint local, EndPoint remote, uint32_t local_seq, uint32_t remote_seq) :
-            local{local}, remote{remote}, ack_receive{local_seq}, frame_receive{remote_seq},
-            fragments{}, buffer{4096}, buffer_start{0}, buffer_end{0},
+    TCPReceiver(EndPoint local, EndPoint remote, uint32_t local_seq, uint32_t remote_seq,
+                uint16_t mss, uint8_t scale) :
+            local{local}, remote{remote}, mss{mss}, scale{scale},
+            ack_receive{local_seq}, frame_receive{remote_seq},
+            fragments{}, buffer{BUFFER_SIZE}, buffer_start{0}, buffer_end{0},
             lock{}, receiver_lock{}, empty{}, close_seq{0}, closed{false} {}
 
     TCPReceiver(TCPReceiver &&other) noexcept = delete;
@@ -183,10 +208,13 @@ public:
         union {
             struct {
                 uint32_t ack_receive;
+                uint32_t remote_window;
                 uint32_t frame_receive;
+                uint32_t local_window;
             } frame_receive;
             struct {
                 uint32_t ack_receive;
+                uint32_t remote_window;
             } ack_receive;
             struct {
             } frame_send;
@@ -199,26 +227,22 @@ public:
 
     struct SyncOption : public IntoSliceTrait<SyncOption> {
         TCPOptionMSS mss;
+        TCPOptionScale scale;
 
-        explicit SyncOption(uint16_t mss) : mss{mss} {}
+        explicit SyncOption(uint16_t mss, uint8_t scale) : mss{mss}, scale{scale} {}
     };
 
 private:
     struct TCPSendArgs {
-        uint16_t mss;
         MPSCQueue<PacketBuffer>::Sender send_queue;
         MPSCQueue<Request>::Receiver request_receiver;
-        TCPSender *connection;
+        std::shared_ptr<TCPSender> connection;
     };
 
     struct TCPRecvArgs {
         Demultiplexer<PacketBuffer>::ReceiverGuard recv_queue;
         MPSCQueue<TCPClient::Request>::Sender request_sender;
-        TCPReceiver *connection;
-    };
-
-    struct TCPTimerArgs {
-        MPSCQueue<TCPClient::Request>::Sender request_sender;
+        std::shared_ptr<TCPReceiver> connection;
     };
 
     static void *tcp_sender(void *args);
@@ -227,8 +251,8 @@ private:
 
     pthread_t send_thread, recv_thread;
     std::shared_ptr<BaseSocket> device;
-    TCPSender *sender;
-    TCPReceiver *receiver;
+    std::shared_ptr<TCPSender> sender;
+    std::shared_ptr<TCPReceiver> receiver;
     MPSCQueue<TCPClient::Request>::Sender request_sender;
 
 public:
@@ -241,9 +265,10 @@ public:
     ssize_t send(Slice<uint8_t> data) {
         auto result = sender->send(data);
 
-        *request_sender.send() = TCPClient::Request{
-                TCPClient::Request::FrameSend, {.frame_send = {}}
-        };
+        auto send = request_sender.send();
+        if (!send.none()) {
+            *send = TCPClient::Request{TCPClient::Request::FrameSend, {.frame_send = {}}};
+        }
 
         return result;
     }
@@ -252,10 +277,12 @@ public:
 
     ~TCPClient() {
         {
-            *request_sender.send() = Request{
-                    Request::Close,
-                    {.close = {receiver->ack_receive, receiver->frame_receive}}
-            };
+            auto send = request_sender.send();
+            if (!send.none()) {
+                *send = Request{Request::Close, {.close = {
+                        receiver->ack_receive, receiver->frame_receive
+                }}};
+            }
         }
 
         pthread_join(send_thread, nullptr);
