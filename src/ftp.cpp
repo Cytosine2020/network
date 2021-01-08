@@ -26,14 +26,16 @@ int main(int argc, char **argv) {
     EndPoint remote{get_host_ip(argv[2]), 21};
     EndPoint local{local_ip, local_port++};
 
-    FTPClient ftp_client(device, local, remote);
+    FTPClient ftp_client{device, local, remote};
 
     ftp_client.login("ftp", "");
     ftp_client.pwd();
-    ftp_client.pasv(device, EndPoint{local_ip, local_port++}) &&
+    ftp_client.pasv(device, EndPoint{local_ip, local_port++});
     ftp_client.list();
     ftp_client.cwd("ubuntu");
-    ftp_client.pasv(device, EndPoint{local_ip, local_port++}) &&
+    ftp_client.pwd();
+    ftp_client.pasv(device, EndPoint{local_ip, local_port++});
+    ftp_client.list();
+    ftp_client.pasv(device, EndPoint{local_ip, local_port++});
     ftp_client.retr("ls-lR.gz");
-    ftp_client.quit();
 }

@@ -77,21 +77,25 @@ bool FTPClient::cwd(const char *pathname) {
 
 bool FTPClient::pasv(std::shared_ptr<cs120::BaseSocket> &device, EndPoint local) {
     Buffer<uint8_t, BUFF_LEN> buffer{};
-    if (!(send_printf(control, buffer[Range{}], "PASV\r\n") &&
-          recv(control, buffer[Range{}]))) { return false; }
+    if (!send_printf(control, buffer[Range{}], "PASV\r\n")) { return false; }
 
-    std::regex reg(R"(\((\d+),(\d+),(\d+),(\d+),(\d+),(\d+)\))");
+    size_t size = control->recv(buffer[Range{}]);
+    if (size == 0) { return false; }
+
+    buffer[size] = '\0';
+
+    printf("%.*s", static_cast<int>(size), buffer.begin());
+
+    std::regex reg{R"(\((\d+),(\d+),(\d+),(\d+),(\d+),(\d+)\))"};
     std::cmatch match{};
 
-    uint16_t remote_port;
-    uint32_t remote_ip;
-    if (std::regex_search(reinterpret_cast<char *>(buffer.begin()), match, reg)) {
-        remote_port = (stoi(match.str(5)) << 8) + stoi(match.str(6));
-        remote_ip = (stoi(match.str(4)) << 24) + (stoi(match.str(3)) << 16) +
-                    (stoi(match.str(2)) << 8) + stoi(match.str(1));
-    } else {
+    if (!std::regex_search(reinterpret_cast<char *>(buffer.begin()), match, reg)) {
         cs120_abort("");
     }
+
+    uint32_t remote_ip = (stoi(match.str(4)) << 24) + (stoi(match.str(3)) << 16) +
+                         (stoi(match.str(2)) << 8) + stoi(match.str(1));
+    uint16_t remote_port = (stoi(match.str(5)) << 8) + stoi(match.str(6));
 
     EndPoint remote{remote_ip, remote_port};
 
@@ -102,13 +106,9 @@ bool FTPClient::pasv(std::shared_ptr<cs120::BaseSocket> &device, EndPoint local)
 
 bool FTPClient::list(const char *path) {
     Buffer<uint8_t, BUFF_LEN> buffer{};
-    if (path == nullptr) {
-        if (!send_printf(control, buffer[Range{}], "LIST\r\n")) { return false; }
-    } else {
-        if (!send_printf(control, buffer[Range{}], "LIST %s\r\n", path)) { return false; }
-    }
 
-    if (!recv(control, buffer[Range{}])) { return false; }
+    if (!(send_printf(control, buffer[Range{}], "LIST %s\r\n", path) &&
+          recv(control, buffer[Range{}]))) { return false; }
 
     while (!control->has_data()) {
         if (!recv(data, buffer[Range{}])) { return false; }
@@ -149,5 +149,4 @@ bool FTPClient::retr(const char *file_name) {
 
     return true;
 }
-
 }

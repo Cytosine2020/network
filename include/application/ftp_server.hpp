@@ -38,11 +38,13 @@ public:
 
     bool cwd(const char *pathname);
 
-    bool list(const char *path = nullptr);
+    bool list(const char *path = "");
 
     bool retr(const char *file_name);
 
     bool quit();
+
+    ~FTPClient() { quit(); }
 };
 }
 
