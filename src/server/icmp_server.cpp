@@ -74,8 +74,18 @@ void ICMPServer::icmp_receiver() {
 
             cs120_warn("echo reply loss!");
         } else {
+            uint32_t src_ip = ip_header->get_src_ip();
+            uint32_t dest_ip = ip_header->get_dest_ip();
+
+            ip_header->set_src_ip(dest_ip);
+            ip_header->set_dest_ip(src_ip);
+            ip_header->set_checksum(0);
+            ip_header->set_checksum(complement_checksum(ip_header->into_slice()));
+
             icmp_header->set_type(ICMPType::EchoReply);
+            icmp_header->set_checksum(0);
             icmp_header->set_checksum(complement_checksum(ip_data));
+
             auto range = Range{0, ip_header->get_total_length()};
             (*send)[range].copy_from_slice((*buffer)[range]);
         }

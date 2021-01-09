@@ -170,7 +170,7 @@ int main(int argc, char **argv) {
 
             for (;;) {
                 ssize_t count = recv(fd, buffer.begin(), buffer.size(), 0);
-                if (count == -1) { cs120_abort("recv error"); }
+                if (count == -1) { cs120_abort("recv_line error"); }
                 if (count == 0) { break; }
 
                 if (write(file, buffer.begin(), count) != count) { cs120_abort("write error"); }

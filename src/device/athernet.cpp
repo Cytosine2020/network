@@ -52,7 +52,7 @@ void *unix_socket_receiver(void *args_) {
         ssize_t len = recv(args->athernet, buffer.begin(), ATHERNET_MTU, 0);
 
         if (len == 0) { break; }
-        if (len != ATHERNET_MTU) { cs120_abort("recv error"); }
+        if (len != ATHERNET_MTU) { cs120_abort("recv_line error"); }
 
         size_t size = buffer[0];
         args->demultiplexer.send(buffer[Range{1, size + 1}]);

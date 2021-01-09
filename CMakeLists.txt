@@ -17,8 +17,8 @@ include_directories(${PCAP_INCLUDE_DIR} ${LIBNET_INCLUDE_DIR} include)
 
 add_executable(icmp
         src/icmp.cpp src/wire/wire.cpp src/device/athernet.cpp
-        src/device/unix_socket.cpp src/device/athernet_socket.cpp src/server/icmp_server.cpp)
-target_link_libraries(icmp pthread)
+        src/device/raw_socket.cpp src/device/unix_socket.cpp src/device/athernet_socket.cpp src/server/icmp_server.cpp)
+target_link_libraries(icmp pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
 add_executable(udp
         src/udp.cpp src/wire/wire.cpp src/device/athernet.cpp
@@ -40,11 +40,11 @@ target_link_libraries(ftp pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
 add_executable(nat
         src/nat.cpp src/wire/wire.cpp src/wire/get_local_ip.cpp
-        src/device/athernet.cpp src/device/raw_socket.cpp src/device/unix_socket.cpp src/server/nat_server.cpp)
+        src/device/raw_socket.cpp src/device/athernet.cpp src/device/unix_socket.cpp src/server/nat_server.cpp)
 target_link_libraries(nat pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 
 
-foreach (executable nat ftp)
+foreach (executable nat ftp icmp)
     if (APPLE)
         add_custom_command(
                 TARGET ${executable}

@@ -17,11 +17,12 @@ private:
 
     std::unique_ptr<TCPClient> control;
     std::unique_ptr<TCPClient> data;
+    Array<uint8_t> write_buffer, read_buffer;
+    Slice<uint8_t> read_remain;
 
-    static bool send_printf(std::unique_ptr<TCPClient> &client, MutSlice<uint8_t> buffer,
-                            const char *format, ...);
+    bool send_printf(const char *format, ...);
 
-    static bool recv(std::unique_ptr<TCPClient> &client, MutSlice<uint8_t> buffer);
+    Slice<uint8_t> recv_line();
 
 public:
     FTPClient(std::shared_ptr<BaseSocket> &device, EndPoint local, EndPoint remote);

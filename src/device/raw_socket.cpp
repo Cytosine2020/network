@@ -68,7 +68,7 @@ struct pcap_callback_args {
 void pcap_callback(u_char *args_, const struct pcap_pkthdr *info, const u_char *packet) {
     auto *args = reinterpret_cast<pcap_callback_args *>(args_);
 
-    if (info->caplen != info->len) { cs120_abort("packet truncated!"); }
+    if (info->caplen != info->len) { cs120_warn("packet truncated!"); }
 
     Slice<uint8_t> eth_datagram{packet, info->caplen};
 
