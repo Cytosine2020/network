@@ -34,17 +34,12 @@ public:
         return index + diff >= buffer.size() ? index + diff - buffer.size() : index + diff;
     }
 
-    uint32_t get_buffer_size() const {
+    uint32_t get_size() const {
         if (buffer_end >= buffer_start) {
             return buffer_end - buffer_start;
         } else {
             return buffer.size() + buffer_end - buffer_start;
         }
-    }
-
-    uint32_t get_size() const {
-        if (remote_window == 0) { return 1; }
-        return std::min(get_buffer_size(), remote_window);
     }
 
     TCPSender(EndPoint local, EndPoint remote, uint32_t local_seq, uint32_t remote_seq,
@@ -64,14 +59,12 @@ public:
 
     ssize_t send(Slice<uint8_t> data);
 
-    void take(uint32_t offset, MutSlice<uint8_t> data);
+    uint32_t ack_update(uint32_t ack);
 
-    void ack_update(uint32_t ack);
+    uint32_t get_send_window() const { return std::max(remote_window, 1u); }
 
-    uint16_t get_tcp_window() const {
-        uint32_t window = local_window >> scale;
-        uint32_t max = std::numeric_limits<uint16_t>::max();
-        return std::min(window, max);
+    uint16_t get_receive_window() const {
+        return std::min<uint32_t>(local_window >> scale, std::numeric_limits<uint16_t>::max());
     }
 
     void generate_ack(MPSCQueue<PacketBuffer>::Sender &sender) const {
@@ -85,14 +78,13 @@ public:
                             local.ip_addr, remote.ip_addr, 64, local.port, remote.port,
                             frame_send, frame_receive,
                             false, false, false, false, true, false, false, false, false,
-                            get_tcp_window(), Slice<uint8_t>{}, 0);
+                            get_receive_window(), Slice<uint8_t>{}, 0);
     }
 
-    void generate_data(MPSCQueue<PacketBuffer>::Sender &sender) {
-        uint32_t window = get_size();
-        uint32_t size;
+    void generate_data(MPSCQueue<PacketBuffer>::Sender &sender, uint32_t offset, uint32_t window) {
+        size_t remain = get_size();
 
-        for (uint32_t offset = 0; offset < window; offset += size) {
+        for (uint32_t size; offset < window; offset += size) {
             size = std::min<size_t>(mss, window - offset);
 
             auto send = sender.try_send().unwrap();
@@ -108,33 +100,42 @@ public:
                                                   local.port, remote.port,
                                                   ack_receive + offset, frame_receive,
                                                   false, false, false, false, true,
-                                                  offset + size == window, false, false, false,
-                                                  get_tcp_window(), Slice<uint8_t>{}, size);
+                                                  offset + size == remain, false, false, false,
+                                                  get_receive_window(), Slice<uint8_t>{}, size);
 
-            take(offset, *tcp_buffer);
+            uint32_t end = buffer_end;
+            uint32_t start = index_increase(buffer_start, offset);
+
+            if (buffer_start < end) {
+                tcp_buffer->copy_from_slice(buffer[Range{start}][Range{0, size}]);
+            } else {
+                size_t len = std::min<size_t>(size, buffer.size() - start);
+                (*tcp_buffer)[Range{0, len}].copy_from_slice(buffer[Range{start}][Range{0, len}]);
+                (*tcp_buffer)[Range{len}].copy_from_slice(buffer[Range{0, size - len}]);
+            }
         }
 
-        generate_fin(sender);
-
         frame_send = std::max(frame_send, ack_receive + window);
+
+        if (closed && ack_receive + window == close_seq) {
+            generate_fin(sender);
+        }
     }
 
     void generate_fin(MPSCQueue<PacketBuffer>::Sender &sender) {
-        if (closed) {
-            auto send = sender.try_send().unwrap();
-            if (send.none()) {
-                cs120_warn("package lost!");
-                return;
-            }
-
-            TCPHeader::generate((*send)[Range{}], 0, IDENTIFIER,
-                                local.ip_addr, remote.ip_addr, 64, local.port, remote.port,
-                                close_seq, frame_receive,
-                                false, false, false, false, true, false, false, false, true,
-                                get_tcp_window(), Slice<uint8_t>{}, 0);
-
-            frame_send = close_seq + 1;
+        auto send = sender.try_send().unwrap();
+        if (send.none()) {
+            cs120_warn("package lost!");
+            return;
         }
+
+        TCPHeader::generate((*send)[Range{}], 0, IDENTIFIER,
+                            local.ip_addr, remote.ip_addr, 64, local.port, remote.port,
+                            close_seq, frame_receive,
+                            false, false, false, false, true, false, false, false, true,
+                            get_receive_window(), Slice<uint8_t>{}, 0);
+
+        frame_send = close_seq + 1;
     }
 
     ~TCPSender() = default;
@@ -148,7 +149,7 @@ public:
     uint16_t mss;
     uint8_t scale;
     uint32_t ack_receive, frame_receive;
-    std::map<uint32_t, uint32_t> fragments;
+    std::map<uint32_t, uint32_t> fragments; // todo
     Array<uint8_t> buffer;
     size_t buffer_start, buffer_end;
     std::mutex lock, receiver_lock;
@@ -188,7 +189,7 @@ public:
 
     ssize_t recv(MutSlice<uint8_t> data);
 
-    bool has_data() { return buffer_start != buffer_end; }
+    bool has_data() const { return buffer_start != buffer_end; }
 
     ~TCPReceiver() = default;
 };

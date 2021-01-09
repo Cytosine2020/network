@@ -2,8 +2,7 @@
 
 #include <chrono>
 #include <thread>
-#include <vector>
-#include <queue>
+#include <list>
 
 #include "wire/ipv4.hpp"
 #include "wire/tcp.hpp"
@@ -50,38 +49,26 @@ ssize_t TCPSender::send(Slice<uint8_t> data) {
     return size;
 }
 
-void TCPSender::take(uint32_t offset, MutSlice<uint8_t> data) {
-    uint32_t end = buffer_end;
-    uint32_t start = index_increase(buffer_start, offset);
-
-    if (buffer_start < end) {
-        data.copy_from_slice(buffer[Range{start}][Range{0, data.size()}]);
-    } else {
-        size_t len = std::min(data.size(), buffer.size() - start);
-        data[Range{0, len}].copy_from_slice(buffer[Range{start}][Range{0, len}]);
-        data[Range{len}].copy_from_slice(buffer[Range{0, data.size() - len}]);
-    }
-}
-
-void TCPSender::ack_update(uint32_t ack) {
-    if (closed && ack == frame_send && ack == close_seq + 1) {
-        ack_receive = ack;
-        return;
-    }
-
+uint32_t TCPSender::ack_update(uint32_t ack) {
     if (ack_receive <= frame_send) {
-        if (ack_receive < ack && ack <= frame_send) {
-            buffer_start = index_increase(buffer_start, ack - ack_receive);
-            ack_receive = ack;
-            full.notify_all();
-        }
+        if (ack_receive >= ack || ack > frame_send) { return 0; }
     } else {
-        if (ack_receive < ack || ack <= frame_send) {
-            buffer_start = index_increase(buffer_start, ack - ack_receive);
-            ack_receive = ack;
-            full.notify_all();
-        }
+        if (ack_receive >= ack && ack > frame_send) { return 0; }
     }
+
+    uint32_t size = ack - ack_receive;
+    ack_receive = ack;
+
+    if (closed && ack == frame_send && frame_send == close_seq + 1) {
+        size -= 1;
+    }
+
+    if (size > 0) {
+        buffer_start = index_increase(buffer_start, size);
+        full.notify_all();
+    }
+
+    return size;
 }
 
 void TCPReceiver::accept(uint32_t seq, Slice<uint8_t> data) {
@@ -145,13 +132,6 @@ void TCPReceiver::accept(uint32_t seq, Slice<uint8_t> data) {
     }
 }
 
-void TCPReceiver::close(uint32_t seq) {
-    close_seq = seq;
-    if (frame_receive == close_seq) { ++frame_receive; }
-    closed = true;
-    empty.notify_all();
-}
-
 ssize_t TCPReceiver::recv(MutSlice<uint8_t> data) {
     std::unique_lock<std::mutex> receiver_guard{receiver_lock};
 
@@ -198,77 +178,148 @@ void *TCPClient::tcp_sender(void *args_) {
     auto *args = reinterpret_cast<TCPSendArgs *>(args_);
     auto sender = args->connection;
 
-    std::priority_queue<TimePoint, std::vector<TimePoint>, std::greater<>> timeout{};
+    uint32_t congestion_threshold = sender->remote_window / sender->mss * sender->mss;
+    uint32_t congestion_window = sender->mss;
+    uint32_t transmitting = 0;
+    uint32_t transmitted = 0;
+
+    uint32_t last_ack_num = 0;
+    uint32_t last_ack_count = 0;
+
+    std::list<std::pair<TimePoint, uint32_t>> timeout{};
 
     for (;;) {
         if (args->send_queue.is_closed()) { break; }
 
-        MPSCQueue<Request>::ReceiverSlotGuard recv =
-                timeout.empty() ? args->request_receiver.recv().unwrap() :
-                args->request_receiver.recv_deadline(timeout.top()).unwrap();
+        auto recv = timeout.empty() ? args->request_receiver.recv_timeout(300ms).unwrap() :
+                    args->request_receiver.recv_deadline(timeout.begin()->first).unwrap();
 
         auto current = std::chrono::system_clock::now();
 
-        // this is timeout
         if (recv.none()) {
             if (sender->finished()) { break; }
 
-            sender->generate_data(args->send_queue);
+            if (!timeout.empty() && current > timeout.begin()->first) {
+                // this is timeout
+                timeout.begin()->first += 300ms;
 
-            timeout.pop();
-            timeout.push(current + 300ms);
+                // multiplicative decreasing
+                congestion_threshold = congestion_threshold / sender->mss / 2 * sender->mss;
+                if (congestion_threshold < sender->mss) {
+                    congestion_threshold = sender->mss;
+                }
 
-            continue;
-        }
+                congestion_window = sender->mss;
 
-        switch (recv->type) {
-            case Request::FrameReceive: {
-                auto &request = recv->inner.frame_receive;
+                uint32_t size = timeout.begin()->second;
+                size = std::min(size, congestion_window);
 
-                sender->ack_update(request.ack_receive);
-                sender->remote_window = sender->remote_window;
-                sender->frame_receive = request.frame_receive;
-                sender->local_window = request.local_window;
-
-                sender->generate_ack(args->send_queue);
+                sender->generate_data(args->send_queue, 0, size);
+            } else {
+                continue;
             }
-                break;
-            case Request::AckReceive: {
-                auto &request = recv->inner.ack_receive;
+        } else {
+            size_t ack_size = 0;
 
-                sender->ack_update(request.ack_receive);
-                sender->remote_window = sender->remote_window;
+            switch (recv->type) {
+                case Request::FrameReceive: {
+                    auto &request = recv->inner.frame_receive;
+
+                    if (last_ack_count > 0 && last_ack_num == request.ack_receive) {
+                        last_ack_count += 1;
+                    }
+
+                    ack_size = sender->ack_update(request.ack_receive);
+                    sender->remote_window = sender->remote_window;
+                    sender->frame_receive = request.frame_receive;
+                    sender->local_window = request.local_window;
+
+                    sender->generate_ack(args->send_queue);
+                }
+                    break;
+                case Request::AckReceive: {
+                    auto &request = recv->inner.ack_receive;
+
+                    if (last_ack_count > 0 && last_ack_num == request.ack_receive) {
+                        last_ack_count += 1;
+                    }
+
+                    ack_size = sender->ack_update(request.ack_receive);
+                    sender->remote_window = sender->remote_window;
+                }
+                    break;
+                case Request::FrameSend:
+                    break;
+                case Request::Close:
+                    if (!sender->closed) {
+                        sender->closed = true;
+                        sender->close_seq = sender->ack_receive + sender->get_size();
+                    }
+
+                    break;
+                default:
+                    cs120_abort("unknown type!");
             }
-                break;
-            case Request::FrameSend: {
-                if (timeout.empty()) {
-                    sender->generate_data(args->send_queue);
 
-                    timeout.push(current + 300ms);
+            transmitting -= ack_size;
+            transmitted += ack_size;
+
+            while (ack_size > 0) {
+                auto ptr = timeout.begin();
+
+                if (ptr->second <= ack_size) {
+                    ack_size -= ptr->second;
+                    timeout.pop_front();
+                } else {
+                    ptr->second -= ack_size;
+                    ack_size = 0;
                 }
             }
-                break;
-            case Request::Close: {
-                if (!sender->closed) {
-                    sender->closed = true;
-                    sender->close_seq = sender->ack_receive + sender->get_size();
 
-                    if (timeout.empty()) {
-                        sender->generate_fin(args->send_queue);
+            if (transmitted >= congestion_window) {
+                transmitted -= congestion_window;
 
-                        timeout.push(current + 300ms);
+                if (congestion_window == congestion_threshold) {
+                    // additive increasing
+                    congestion_window += sender->mss;
+                    congestion_threshold += sender->mss;
+                } else {
+                    // slow start
+                    congestion_window *= 2;
+
+                    if (congestion_window > congestion_threshold) {
+                        congestion_window = congestion_threshold;
                     }
                 }
             }
-                break;
-            default:
-                cs120_abort("unknown type!");
+
+            if (last_ack_count >= 3) {
+                // todo
+            }
+
+            uint32_t size = sender->get_size();
+            size = std::min(size, sender->get_send_window());
+            size = std::min(size, congestion_window);
+
+            if (size > transmitting) {
+                sender->generate_data(args->send_queue, transmitting, size);
+
+                timeout.emplace_back(std::make_pair(current + 300ms, size - transmitting));
+                transmitting = size;
+            }
         }
     }
 
     delete args;
 
     return nullptr;
+}
+
+void TCPReceiver::close(uint32_t seq) {
+    close_seq = seq;
+    if (frame_receive == close_seq) { ++frame_receive; }
+    closed = true;
+    empty.notify_all();
 }
 
 void *TCPClient::tcp_receiver(void *args_) {

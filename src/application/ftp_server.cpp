@@ -30,8 +30,6 @@ bool FTPClient::send_printf(const char *format, ...) {
     va_start(args, format);
     int len = vsnprintf(reinterpret_cast<char *>(write_buffer.begin()),
                         write_buffer.size(), format, args);
-
-    print_slice(write_buffer[Range{0, static_cast<size_t>(len)}]);
     va_end(args);
 
     if (len < 0 || static_cast<size_t>(len) >= write_buffer.size()) { return false; }
@@ -64,7 +62,7 @@ Slice<uint8_t> FTPClient::recv_line() {
 
     read_remain = MutSlice<uint8_t>{};
 
-    for (size_t size = 0; offset < read_buffer.size(); offset += size) {
+    for (size_t size; offset < read_buffer.size(); offset += size) {
         size = control->recv(read_buffer[Range{offset}]);
         if (size == 0) { return MutSlice<uint8_t>{}; }
 
@@ -79,10 +77,6 @@ Slice<uint8_t> FTPClient::recv_line() {
     }
 
     return MutSlice<uint8_t>{};
-}
-
-bool FTPClient::login(const char *user_name, const char *password) {
-    return user(user_name) && pass(password);
 }
 
 bool FTPClient::user(const char *user_name) {
@@ -159,7 +153,7 @@ bool FTPClient::list(const char *path) {
     print_slice(msg);
 
     Buffer<uint8_t, BUFF_LEN> buffer{};
-    while (true) {
+    for (;;) {
         size_t size = data->recv(buffer[Range{}]);
         if (size == 0) { break; }
 
@@ -169,16 +163,6 @@ bool FTPClient::list(const char *path) {
     data = nullptr;
 
     msg = recv_line();
-    if (msg.empty()) { return false; }
-    print_slice(msg);
-
-    return true;
-}
-
-bool FTPClient::quit() {
-    if (!send_printf("QUIT\r\n")) { return false; }
-
-    auto msg = recv_line();
     if (msg.empty()) { return false; }
     print_slice(msg);
 
@@ -198,7 +182,7 @@ bool FTPClient::retr(const char *file_name) {
     if (file < 0) { cs120_abort("open error"); }
 
     Buffer<uint8_t, BUFF_LEN> buffer{};
-    while (true) {
+    for (;;) {
         size_t size = data->recv(buffer[Range{}]);
         if (size == 0) { break; }
 
@@ -211,6 +195,16 @@ bool FTPClient::retr(const char *file_name) {
     close(file);
 
     msg = recv_line();
+    if (msg.empty()) { return false; }
+    print_slice(msg);
+
+    return true;
+}
+
+bool FTPClient::quit() {
+    if (!send_printf("QUIT\r\n")) { return false; }
+
+    auto msg = recv_line();
     if (msg.empty()) { return false; }
     print_slice(msg);
 
