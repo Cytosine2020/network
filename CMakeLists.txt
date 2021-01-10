@@ -34,7 +34,8 @@ target_link_libraries(tcp pthread)
 
 
 add_executable(ftp
-        src/ftp.cpp src/wire/wire.cpp src/device/raw_socket.cpp
+        src/ftp.cpp src/wire/wire.cpp src/device/athernet.cpp
+        src/device/raw_socket.cpp src/device/unix_socket.cpp src/device/athernet_socket.cpp
         src/server/tcp_server.cpp src/application/ftp_server.cpp)
 target_link_libraries(ftp pthread ${PCAP_LIBRARY} ${LIBNET_LIBRARY})
 

@@ -419,7 +419,7 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
         return true;
     }, size);
 
-    uint16_t local_mss = TCPHeader::max_payload(device->get_mtu());
+    uint16_t local_mss = TCPHeader::max_payload(1500);
     uint16_t remote_mss = 0;
 
     uint8_t local_scale = 0;

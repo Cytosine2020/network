@@ -120,6 +120,8 @@ bool FTPClient::cwd(const char *pathname) {
 }
 
 bool FTPClient::pasv(std::shared_ptr<cs120::BaseSocket> &device, EndPoint local) {
+    if (data != nullptr) { return true; }
+
     if (!send_printf("PASV\r\n")) { return false; }
 
     auto msg = recv_line();
@@ -152,6 +154,13 @@ bool FTPClient::list(const char *path) {
     if (msg.empty()) { return false; }
     print_slice(msg);
 
+    switch (msg[0]) {
+        case '4':
+        case '5':
+        case '6':
+            return false;
+    }
+
     Buffer<uint8_t, BUFF_LEN> buffer{};
     for (;;) {
         size_t size = data->recv(buffer[Range{}]);
@@ -177,6 +186,13 @@ bool FTPClient::retr(const char *file_name) {
     auto msg = recv_line();
     if (msg.empty()) { return false; }
     print_slice(msg);
+
+    switch (msg[0]) {
+        case '4':
+        case '5':
+        case '6':
+            return false;
+    }
 
     int file = open(file_name, O_RDWR | O_CREAT | O_TRUNC | O_APPEND, 0644);
     if (file < 0) { cs120_abort("open error"); }

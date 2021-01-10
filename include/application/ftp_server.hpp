@@ -27,6 +27,8 @@ private:
 public:
     FTPClient(std::shared_ptr<BaseSocket> &device, EndPoint local, EndPoint remote);
 
+    bool data_link() const { return data != nullptr; }
+
     bool pasv(std::shared_ptr<cs120::BaseSocket> &device, EndPoint local);
 
     bool user(const char *user_name);
