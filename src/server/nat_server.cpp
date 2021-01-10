@@ -131,7 +131,9 @@ void NatServer::nat_lan_to_wan() {
                 cs120_warn("package loss!");
             } else {
                 auto buffer = ICMPHeader::generate((*send)[Range{}], 0, 0, wan_addr, src_ip, 64,
-                                                   ICMPType::EchoRequest, 0, icmp_data_size);
+                                                   ICMPType::Unreachable,
+                                                   ICMPUnreachable::DatagramTooBig,
+                                                   icmp_data_size);
 
                 (*buffer)[Range{0, sizeof(ICMPUnreachable)}]
                         .copy_from_slice(data.into_slice());

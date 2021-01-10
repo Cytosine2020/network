@@ -419,7 +419,7 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
         return true;
     }, size);
 
-    uint16_t local_mss = TCPHeader::max_payload(1500);
+    uint16_t local_mss = TCPHeader::max_payload(device->get_mtu());
     uint16_t remote_mss = 0;
 
     uint8_t local_scale = 0;
@@ -428,7 +428,7 @@ TCPClient::TCPClient(std::shared_ptr<BaseSocket> &device, size_t size,
     uint32_t local_seq = 0;
     uint32_t remote_seq = 0; // todo
 
-    SyncOption option{local_mss, local_scale};
+    SyncOption option{static_cast<uint16_t>(TCPHeader::max_payload(1500)), local_scale};
 
     uint32_t local_window = TCPSender::BUFFER_SIZE - 1;
     uint32_t remote_window = 0;
